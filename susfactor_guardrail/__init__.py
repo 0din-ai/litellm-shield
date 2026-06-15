@@ -20,13 +20,7 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
-# SusFactorGuardrail is imported here so callers can do:
-#   from susfactor_guardrail import SusFactorGuardrail
-# and LiteLLM can resolve "susfactor_guardrail.SusFactorGuardrail".
-#
-# The real implementation lives in .guardrail; this stub satisfies P0.
-# It will be replaced in P2 with the full CustomGuardrail subclass.
-from susfactor_guardrail._stub import SusFactorGuardrail
+from susfactor_guardrail.guardrail import SusFactorGuardrail
 
 __all__ = [
     "SusFactorGuardrail",
