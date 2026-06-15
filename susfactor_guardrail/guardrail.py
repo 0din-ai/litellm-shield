@@ -29,10 +29,12 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Literal, Optional
+import time
+from typing import Any, Dict, Literal, Optional
 
 from litellm.exceptions import GuardrailRaisedException
 from litellm.integrations.custom_guardrail import CustomGuardrail
+from litellm.proxy._types import UserAPIKeyAuth
 
 from susfactor_guardrail.backend import SdkBackend, SusFactorUnavailable
 
@@ -145,14 +147,26 @@ class SusFactorGuardrail(CustomGuardrail):
         request_data: dict[str, Any],
         input_type: Literal["request", "response"],
     ) -> None:
-        """Score one text and apply the action. Raises on block."""
+        """Score one text, record observability data, and apply the action."""
+        start = time.monotonic()
+
+        # --- Backend call ---
         try:
             result = await self._backend.score(text)
         except SusFactorUnavailable as exc:
+            elapsed_s = time.monotonic() - start
             logger.warning(
-                "susfactor: backend unavailable (fail_open=%s): %s",
+                "susfactor decision=error action=%s fail_open=%s latency_ms=%.1f error=%s",
+                self._action,
                 self._fail_open,
+                elapsed_s * 1000,
                 exc,
+            )
+            self._record_slg(
+                request_data=request_data,
+                status="guardrail_failed_to_respond",
+                duration=elapsed_s,
+                response={"error": str(exc)},
             )
             if self._fail_open:
                 return
@@ -161,29 +175,64 @@ class SusFactorGuardrail(CustomGuardrail):
                 guardrail_name=self.guardrail_name,
             ) from exc
 
+        elapsed_s = time.monotonic() - start
         is_suspicious = result.score >= self._threshold
 
-        logger.debug(
-            "susfactor: score=%.4f label=%s threshold=%.2f action=%s input_type=%s",
+        # Determine decision label for logging/metadata
+        if self._action == "block" and is_suspicious:
+            decision = "block"
+        elif self._action == "shadow":
+            decision = "shadow"
+        elif self._action == "flag":
+            decision = "flag"
+        else:
+            decision = "allow"
+
+        # --- Structured INFO log ---
+        logger.info(
+            "susfactor decision=%s score=%.4f label=%s threshold=%.2f "
+            "action=%s input_type=%s latency_ms=%.1f backend=%s model=%s",
+            decision,
             result.score,
             result.label,
             self._threshold,
             self._action,
             input_type,
+            elapsed_s * 1000,
+            result.backend,
+            result.model,
         )
 
-        if self._action == "shadow":
-            # Record only — never block
-            self._record(result=result, request_data=request_data, input_type=input_type)
-            return
+        # --- Always record metadata (safe + suspicious) ---
+        self._record(
+            result=result,
+            request_data=request_data,
+            input_type=input_type,
+            decision=decision,
+        )
 
-        if self._action == "flag":
-            self._record(result=result, request_data=request_data, input_type=input_type)
-            return
+        # --- StandardLoggingGuardrailInformation ---
+        slg_status = "guardrail_intervened" if is_suspicious else "success"
+        self._record_slg(
+            request_data=request_data,
+            status=slg_status,
+            duration=elapsed_s,
+            response={
+                "decision": decision,
+                "score": result.score,
+                "label": result.label,
+                "model": result.model,
+                "threshold": self._threshold,
+                "timing_ms": result.timing_ms,
+            },
+        )
+
+        # --- Apply action ---
+        if self._action in ("shadow", "flag"):
+            return  # never block
 
         # action == "block"
         if is_suspicious:
-            self._record(result=result, request_data=request_data, input_type=input_type)
             raise GuardrailRaisedException(
                 message=(
                     f"SusFactor: {input_type} blocked — suspicious content detected "
@@ -197,8 +246,9 @@ class SusFactorGuardrail(CustomGuardrail):
         result: Any,
         request_data: dict[str, Any],
         input_type: Literal["request", "response"],
+        decision: str = "allow",
     ) -> None:
-        """Write decision metadata into request_data for downstream logging."""
+        """Write per-text decision metadata into request_data["metadata"]["susfactor"]."""
         meta = request_data.setdefault("metadata", {})
         susfactor_records: list[dict[str, Any]] = meta.setdefault("susfactor", [])
         susfactor_records.append(
@@ -211,6 +261,55 @@ class SusFactorGuardrail(CustomGuardrail):
                 "input_type": input_type,
                 "timing_ms": result.timing_ms,
                 "backend": result.backend,
-                "decision": "block" if (result.score >= self._threshold and self._action == "block") else self._action,
+                "decision": decision,
             }
         )
+
+    def _record_slg(
+        self,
+        request_data: dict[str, Any],
+        status: str,
+        duration: float,
+        response: dict[str, Any],
+    ) -> None:
+        """Write a StandardLoggingGuardrailInformation entry via the base-class helper."""
+        self.add_standard_logging_guardrail_information_to_request_data(
+            guardrail_json_response=response,
+            request_data=request_data,
+            guardrail_status=status,  # type: ignore[arg-type]
+            duration=duration,
+            guardrail_provider="susfactor",
+        )
+
+    async def async_post_call_response_headers_hook(
+        self,
+        data: dict[str, Any],
+        user_api_key_dict: UserAPIKeyAuth,
+        response: Any,
+        request_headers: Optional[Dict[str, str]] = None,
+        litellm_call_info: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, str]]:
+        """Inject ``X-SusFactor-Decision`` header summarising the last decision.
+
+        Reads the ``susfactor`` list from ``data["metadata"]`` (written by
+        ``apply_guardrail``) and sets the header to the most severe decision
+        across all scored texts (block > flag > shadow > allow).
+        Returns ``None`` when no susfactor records exist.
+        """
+        records: list[dict[str, Any]] = (
+            data.get("metadata", {}).get("susfactor", [])
+        )
+        if not records:
+            return None
+
+        # Severity order for summary header
+        _severity: dict[str, int] = {"block": 3, "flag": 2, "shadow": 1, "allow": 0, "error": -1}
+        worst = max(records, key=lambda r: _severity.get(r.get("decision", "allow"), 0))
+        decision = worst.get("decision", "allow")
+        score = worst.get("score")
+
+        header_value = decision
+        if score is not None:
+            header_value = f"{decision};score={score:.4f}"
+
+        return {"X-SusFactor-Decision": header_value}
