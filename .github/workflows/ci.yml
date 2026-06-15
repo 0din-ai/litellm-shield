@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "sgolub/*"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    name: Lint + Type + Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Black format check
+        run: uv run black --check .
+
+      - name: Mypy type check
+        run: uv run mypy susfactor_guardrail/
+
+      - name: Pytest
+        run: uv run pytest tests/ -v
+        env:
+          # Ensure no accidental real model load in CI — tests must mock
+          SIGNATURE_SDK_MODEL_CACHE: "/tmp/no-model-cache-in-ci"
