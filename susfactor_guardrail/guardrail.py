@@ -132,8 +132,18 @@ class SusFactorGuardrail(CustomGuardrail):
         for text in texts:
             if not text or not text.strip():
                 continue
-
             await self._score_and_act(text=text, request_data=request_data, input_type=input_type)
+
+        # Score tool-call argument strings — LiteLLM does not flatten these into texts.
+        # Each tool call's function.arguments is a JSON string that may contain
+        # injected instructions (e.g. prompt injection via a search result returned
+        # as a tool argument).
+        tool_calls = inputs.get("tool_calls") or []
+        for tool_call in tool_calls:
+            args = self._extract_tool_call_args(tool_call)
+            if not args or not args.strip():
+                continue
+            await self._score_and_act(text=args, request_data=request_data, input_type=input_type)
 
         return inputs
 
@@ -240,6 +250,30 @@ class SusFactorGuardrail(CustomGuardrail):
                 ),
                 guardrail_name=self.guardrail_name,
             )
+
+    @staticmethod
+    def _extract_tool_call_args(tool_call: Any) -> str:
+        """Extract the function.arguments string from a tool call object or dict.
+
+        Handles both ``ChatCompletionMessageToolCall`` (attribute access) and plain
+        ``dict`` representations. Returns an empty string if arguments cannot be found.
+        """
+        try:
+            # Attribute access path (ChatCompletionMessageToolCall / OpenAIObject)
+            function = getattr(tool_call, "function", None)
+            if function is not None:
+                args = getattr(function, "arguments", None)
+                if args is not None:
+                    return str(args)
+
+            # Dict path
+            if isinstance(tool_call, dict):
+                func = tool_call.get("function", {})
+                if isinstance(func, dict):
+                    return str(func.get("arguments", ""))
+        except Exception:  # noqa: BLE001 — never crash the guardrail on extraction
+            pass
+        return ""
 
     def _record(
         self,
