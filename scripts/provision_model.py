@@ -84,35 +84,51 @@ def provision(cache_dir: Path, token: str | None) -> None:
     encoder_dir.mkdir(parents=True, exist_ok=True)
 
     if not token:
-        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+        # Check common env var names
+        token = (
+            os.environ.get("HF_TOKEN")
+            or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+            or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+        )
 
     if not token:
-        print(
-            f"INFO: HF_TOKEN not set. The model {REPO_ID!r} is gated — you need a\n"
-            "      HuggingFace token with access. Set HF_TOKEN or pass --token.\n"
-            "      Request access at: https://huggingface.co/0dinai/susfactor-e5-large"
-        )
-        token = input("HuggingFace token (or press Enter to abort): ").strip() or None
-        if not token:
-            print("Aborted.")
-            sys.exit(1)
+        # huggingface_hub also reads ~/.cache/huggingface/token automatically
+        # (written by `huggingface-cli login`). Check if it exists before prompting.
+        hf_token_file = Path.home() / ".cache" / "huggingface" / "token"
+        if hf_token_file.exists():
+            print(f"INFO: Using stored HuggingFace token from {hf_token_file}")
+            # Let huggingface_hub read it automatically — don't pass token= explicitly
+        else:
+            print(
+                f"INFO: No HuggingFace token found. The model {REPO_ID!r} is gated.\n"
+                "      Options:\n"
+                "        1. Run: huggingface-cli login\n"
+                "        2. Set: export HF_TOKEN=hf_...\n"
+                "        3. Pass: --token hf_...\n"
+                "      Request access at: https://huggingface.co/0dinai/susfactor-e5-large"
+            )
+            if sys.stdin.isatty():
+                token = input("HuggingFace token (or press Enter to abort): ").strip() or None
+                if not token:
+                    print("Aborted.")
+                    sys.exit(1)
+            else:
+                print("Aborted (non-interactive).")
+                sys.exit(1)
 
     print(f"Downloading {REPO_ID} → {model_dir}")
 
-    # Download encoder files (HuggingFace model repo)
-    snapshot_download(
-        repo_id=REPO_ID,
-        local_dir=str(encoder_dir),
-        token=token,
-        ignore_patterns=["head.pt", "*.md", ".gitattributes"],
-    )
-
-    # head.pt lives at the repo root
+    # The HF repo layout mirrors the expected cache layout exactly:
+    #   encoder/config.json
+    #   encoder/model.safetensors
+    #   encoder/tokenizer.json
+    #   head.pt
+    # Download the whole repo into model_dir and it lands correctly.
     snapshot_download(
         repo_id=REPO_ID,
         local_dir=str(model_dir),
         token=token,
-        allow_patterns=["head.pt"],
+        ignore_patterns=["*.md", ".gitattributes"],
     )
 
     print("\nProvisioning complete. Verifying...")
