@@ -19,7 +19,7 @@ guardrails:
     litellm_params:
       guardrail: susfactor_guardrail.SusFactorGuardrail
       mode: "during_call"
-      action: "shadow"        # never block — record only
+      enforcement: "shadow"   # never block — record only
       threshold: 0.5
       fail_open: true
       backend: "sdk"

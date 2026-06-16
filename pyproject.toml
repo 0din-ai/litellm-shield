@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "litellm>=1.0.0",
+    "litellm[proxy]>=1.0.0",
     "odin-prompt-toolkit[susfactor]",
 ]
 

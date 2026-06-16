@@ -43,7 +43,7 @@ def _make_guardrail(action: str = "block", fail_open: bool = True, threshold: fl
     """Create a guardrail with a mock backend already injected."""
     g = SusFactorGuardrail(
         guardrail_name="susfactor",
-        action=action,
+        enforcement=action,
         threshold=threshold,
         fail_open=fail_open,
         backend="sdk",

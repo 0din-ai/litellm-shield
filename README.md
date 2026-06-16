@@ -118,7 +118,7 @@ guardrails:
     litellm_params:
       guardrail: susfactor_guardrail.SusFactorGuardrail
       mode: "during_call"        # during_call | pre_call | post_call
-      action: "flag"             # flag | shadow | block
+      enforcement: "flag"            # flag | shadow | block
       threshold: 0.5             # score >= threshold → suspicious
       fail_open: true            # on model unavailable: true=allow, false=block
       backend: "sdk"             # sdk (in-process); heimdall (future HTTP backend)

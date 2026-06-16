@@ -18,22 +18,30 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# ---- install deps (lockfile-driven, no editable install) ---------------
-# Copy only the dependency manifest + lockfile first for Docker layer caching.
+# ---- install deps -------------------------------------------------------
+# odin-prompt-toolkit is a private repo — the wheel is built locally
+# (requires SSH access) and copied in; no GitHub credentials needed here.
 COPY pyproject.toml uv.lock ./
+COPY wheels/ ./wheels/
 
-# Install all deps from lockfile. torch brings ~2GB but weights stay outside.
-# Use --no-dev to skip test/lint tools. --no-install-project because we
-# copy the source in the next step.
-RUN uv sync --frozen --no-dev --no-install-project
+# Install all Python deps:
+#   1. odin-prompt-toolkit from the pre-built local wheel
+#   2. Everything else (litellm, torch, transformers, etc.) from PyPI
+RUN uv pip install --system \
+        wheels/odin_prompt_toolkit-*.whl \
+        "litellm[proxy]>=1.0.0" \
+        "torch>=2.0.0" \
+        "transformers>=4.0.0"
 
 # ---- install the guardrail package -------------------------------------
 COPY susfactor_guardrail/ ./susfactor_guardrail/
-RUN uv sync --frozen --no-dev
+COPY pyproject.toml ./
+RUN uv pip install --system --no-deps .
 
-# ---- LiteLLM proxy config ----------------------------------------------
-# The config file is mounted at runtime via docker-compose or -v flag.
-# A default config is provided for convenience.
+# ---- LiteLLM proxy config + guardrail shim -----------------------------
+# LiteLLM resolves custom guardrails by looking for a .py file next to the
+# config file. The shim re-exports from the installed package.
+COPY susfactor_guardrail.py ./susfactor_guardrail.py
 COPY examples/config-flag.yaml ./config.yaml
 
 # ---- model cache mount point -------------------------------------------
@@ -51,4 +59,4 @@ EXPOSE 4000
 # LiteLLM proxy entrypoint. Config can be overridden via LITELLM_CONFIG env var.
 ENV LITELLM_CONFIG=/app/config.yaml
 
-CMD ["uv", "run", "litellm", "--config", "/app/config.yaml", "--port", "4000"]
+CMD ["litellm", "--config", "/app/config.yaml", "--port", "4000"]

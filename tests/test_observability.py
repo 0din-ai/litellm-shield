@@ -30,7 +30,7 @@ SAFE = SusResult(
 def _guardrail(action: str = "flag", fail_open: bool = True) -> SusFactorGuardrail:
     g = SusFactorGuardrail(
         guardrail_name="susfactor",
-        action=action,
+        enforcement=action,
         threshold=0.5,
         fail_open=fail_open,
         backend="sdk",
@@ -65,6 +65,7 @@ async def test_flag_records_susfactor_metadata_on_suspicious() -> None:
     assert rec["label"] == "suspicious"
     assert rec["decision"] == "flag"
     assert rec["input_type"] == "request"
+    assert rec["enforcement"] == "flag"
     assert rec["timing_ms"] == pytest.approx(41.0)
     assert rec["backend"] == "sdk"
 

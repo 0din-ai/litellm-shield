@@ -16,7 +16,7 @@ Configuration via ``config.yaml`` ``litellm_params``::
         litellm_params:
           guardrail: susfactor_guardrail.SusFactorGuardrail
           mode: "during_call"
-          action: "flag"
+          enforcement: "flag"
           threshold: 0.5
           fail_open: true
           backend: "sdk"
@@ -48,7 +48,7 @@ class SusFactorGuardrail(CustomGuardrail):
     """LiteLLM guardrail that runs the SusFactor jailbreak/prompt-injection classifier.
 
     Args:
-        action: What to do when a suspicious text is detected.
+        enforcement: What to do when a suspicious text is detected.
             ``"block"`` raises an exception; ``"flag"`` annotates and allows;
             ``"shadow"`` records only (never blocks).
         threshold: Decision threshold. Score >= threshold ⇒ suspicious.
@@ -65,7 +65,7 @@ class SusFactorGuardrail(CustomGuardrail):
 
     def __init__(
         self,
-        action: str = "flag",
+        enforcement: str = "flag",
         threshold: float = 0.5,
         fail_open: bool = True,
         backend: str = "sdk",
@@ -74,13 +74,14 @@ class SusFactorGuardrail(CustomGuardrail):
         scan_output: bool = False,
         **kwargs: Any,
     ) -> None:
-        if action not in ACTIONS:
-            raise ValueError(f"action must be one of {sorted(ACTIONS)}, got {action!r}")
+        if enforcement not in ACTIONS:
+            raise ValueError(f"enforcement must be one of {sorted(ACTIONS)}, got {enforcement!r}")
 
-        self._action = action
+        self._enforcement = enforcement
         self._threshold = threshold
         self._fail_open = fail_open
         self._scan_output = scan_output
+
 
         # Resolve model_cache_dir from env if not explicitly passed
         resolved_cache_dir = model_cache_dir or os.environ.get("SIGNATURE_SDK_MODEL_CACHE")
@@ -111,7 +112,7 @@ class SusFactorGuardrail(CustomGuardrail):
         """Score each text in ``inputs["texts"]`` and apply the configured action.
 
         Empty or whitespace-only texts are skipped (no backend call).
-        If any text is suspicious and action is ``"block"``, raises an exception.
+        If any text is suspicious and enforcement is ``"block"``, raises an exception.
         For ``"flag"`` and ``"shadow"``, always returns ``inputs`` unchanged.
 
         Args:
@@ -124,7 +125,7 @@ class SusFactorGuardrail(CustomGuardrail):
             ``inputs`` unchanged (possibly annotated in ``request_data["metadata"]``).
 
         Raises:
-            Exception: When action is ``"block"`` and a suspicious text is detected
+            Exception: When enforcement is ``"block"`` and a suspicious text is detected
                 (or when ``fail_open=False`` and the backend is unavailable).
         """
         texts: list[str] = inputs.get("texts") or []
@@ -166,8 +167,8 @@ class SusFactorGuardrail(CustomGuardrail):
         except SusFactorUnavailable as exc:
             elapsed_s = time.monotonic() - start
             logger.warning(
-                "susfactor decision=error action=%s fail_open=%s latency_ms=%.1f error=%s",
-                self._action,
+                "susfactor decision=error enforcement=%s fail_open=%s latency_ms=%.1f error=%s",
+                self._enforcement,
                 self._fail_open,
                 elapsed_s * 1000,
                 exc,
@@ -189,11 +190,11 @@ class SusFactorGuardrail(CustomGuardrail):
         is_suspicious = result.score >= self._threshold
 
         # Determine decision label for logging/metadata
-        if self._action == "block" and is_suspicious:
+        if self._enforcement == "block" and is_suspicious:
             decision = "block"
-        elif self._action == "shadow":
+        elif self._enforcement == "shadow":
             decision = "shadow"
-        elif self._action == "flag":
+        elif self._enforcement == "flag":
             decision = "flag"
         else:
             decision = "allow"
@@ -201,12 +202,12 @@ class SusFactorGuardrail(CustomGuardrail):
         # --- Structured INFO log ---
         logger.info(
             "susfactor decision=%s score=%.4f label=%s threshold=%.2f "
-            "action=%s input_type=%s latency_ms=%.1f backend=%s model=%s",
+            "enforcement=%s input_type=%s latency_ms=%.1f backend=%s model=%s",
             decision,
             result.score,
             result.label,
             self._threshold,
-            self._action,
+            self._enforcement,
             input_type,
             elapsed_s * 1000,
             result.backend,
@@ -238,10 +239,10 @@ class SusFactorGuardrail(CustomGuardrail):
         )
 
         # --- Apply action ---
-        if self._action in ("shadow", "flag"):
+        if self._enforcement in ("shadow", "flag"):
             return  # never block
 
-        # action == "block"
+        # enforcement == "block"
         if is_suspicious:
             raise GuardrailRaisedException(
                 message=(
@@ -291,7 +292,7 @@ class SusFactorGuardrail(CustomGuardrail):
                 "label": result.label,
                 "model": result.model,
                 "threshold": self._threshold,
-                "action": self._action,
+                "enforcement": self._enforcement,
                 "input_type": input_type,
                 "timing_ms": result.timing_ms,
                 "backend": result.backend,

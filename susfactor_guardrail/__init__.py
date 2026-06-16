@@ -11,7 +11,7 @@ Example config.yaml::
         litellm_params:
           guardrail: susfactor_guardrail.SusFactorGuardrail
           mode: "during_call"
-          action: "flag"
+          enforcement: "flag"
           threshold: 0.5
           fail_open: true
 """
