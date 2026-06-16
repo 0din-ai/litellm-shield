@@ -18,12 +18,20 @@ from susfactor_guardrail.guardrail import SusFactorGuardrail
 # ---------------------------------------------------------------------------
 
 SUSPICIOUS = SusResult(
-    score=0.92, label="suspicious", model="0dinai/susfactor-e5-large",
-    threshold=0.5, timing_ms=41.0, backend="sdk",
+    score=0.92,
+    label="suspicious",
+    model="0dinai/susfactor-e5-large",
+    threshold=0.5,
+    timing_ms=41.0,
+    backend="sdk",
 )
 SAFE = SusResult(
-    score=0.08, label="safe", model="0dinai/susfactor-e5-large",
-    threshold=0.5, timing_ms=38.0, backend="sdk",
+    score=0.08,
+    label="safe",
+    model="0dinai/susfactor-e5-large",
+    threshold=0.5,
+    timing_ms=38.0,
+    backend="sdk",
 )
 
 
@@ -56,7 +64,9 @@ async def test_flag_records_susfactor_metadata_on_suspicious() -> None:
     g._backend.score = AsyncMock(return_value=SUSPICIOUS)
     request_data: dict[str, Any] = {}
 
-    await g.apply_guardrail(inputs=_inputs("jailbreak"), request_data=request_data, input_type="request")
+    await g.apply_guardrail(
+        inputs=_inputs("jailbreak"), request_data=request_data, input_type="request"
+    )
 
     records = request_data.get("metadata", {}).get("susfactor", [])
     assert len(records) == 1
@@ -76,7 +86,9 @@ async def test_shadow_records_susfactor_metadata() -> None:
     g._backend.score = AsyncMock(return_value=SUSPICIOUS)
     request_data: dict[str, Any] = {}
 
-    await g.apply_guardrail(inputs=_inputs("jailbreak"), request_data=request_data, input_type="request")
+    await g.apply_guardrail(
+        inputs=_inputs("jailbreak"), request_data=request_data, input_type="request"
+    )
 
     records = request_data.get("metadata", {}).get("susfactor", [])
     assert len(records) == 1
@@ -92,7 +104,9 @@ async def test_block_records_susfactor_metadata_before_raising() -> None:
     request_data: dict[str, Any] = {}
 
     with pytest.raises(GuardrailRaisedException):
-        await g.apply_guardrail(inputs=_inputs("jailbreak"), request_data=request_data, input_type="request")
+        await g.apply_guardrail(
+            inputs=_inputs("jailbreak"), request_data=request_data, input_type="request"
+        )
 
     records = request_data.get("metadata", {}).get("susfactor", [])
     assert len(records) == 1
@@ -105,7 +119,9 @@ async def test_safe_result_records_allow_decision() -> None:
     g._backend.score = AsyncMock(return_value=SAFE)
     request_data: dict[str, Any] = {}
 
-    await g.apply_guardrail(inputs=_inputs("safe text"), request_data=request_data, input_type="request")
+    await g.apply_guardrail(
+        inputs=_inputs("safe text"), request_data=request_data, input_type="request"
+    )
 
     records = request_data.get("metadata", {}).get("susfactor", [])
     assert len(records) == 1
@@ -139,7 +155,9 @@ async def test_standard_logging_guardrail_info_added_on_flag() -> None:
     g._backend.score = AsyncMock(return_value=SUSPICIOUS)
     request_data: dict[str, Any] = {"metadata": {}}
 
-    await g.apply_guardrail(inputs=_inputs("jailbreak"), request_data=request_data, input_type="request")
+    await g.apply_guardrail(
+        inputs=_inputs("jailbreak"), request_data=request_data, input_type="request"
+    )
 
     slg_list = request_data["metadata"].get("standard_logging_guardrail_information", [])
     assert len(slg_list) >= 1
@@ -155,7 +173,9 @@ async def test_standard_logging_guardrail_info_includes_timing() -> None:
     g._backend.score = AsyncMock(return_value=SUSPICIOUS)
     request_data: dict[str, Any] = {"metadata": {}}
 
-    await g.apply_guardrail(inputs=_inputs("jailbreak"), request_data=request_data, input_type="request")
+    await g.apply_guardrail(
+        inputs=_inputs("jailbreak"), request_data=request_data, input_type="request"
+    )
 
     slg_list = request_data["metadata"].get("standard_logging_guardrail_information", [])
     slg = slg_list[-1]
@@ -184,7 +204,9 @@ async def test_standard_logging_guardrail_info_on_unavailable_fail_open() -> Non
 
 
 @pytest.mark.asyncio
-async def test_structured_log_emitted_with_score_and_latency(caplog: pytest.LogCaptureFixture) -> None:
+async def test_structured_log_emitted_with_score_and_latency(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     g = _guardrail(action="flag")
     g._backend.score = AsyncMock(return_value=SUSPICIOUS)
 
@@ -210,7 +232,9 @@ async def test_response_header_set_after_flag_decision() -> None:
     request_data: dict[str, Any] = {}
 
     # Simulate the guardrail running first (populates metadata)
-    await g.apply_guardrail(inputs=_inputs("jailbreak"), request_data=request_data, input_type="request")
+    await g.apply_guardrail(
+        inputs=_inputs("jailbreak"), request_data=request_data, input_type="request"
+    )
 
     headers = await g.async_post_call_response_headers_hook(
         data=request_data,

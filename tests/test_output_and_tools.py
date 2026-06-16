@@ -25,12 +25,20 @@ from susfactor_guardrail.guardrail import SusFactorGuardrail
 # ---------------------------------------------------------------------------
 
 SUSPICIOUS = SusResult(
-    score=0.91, label="suspicious", model="0dinai/susfactor-e5-large",
-    threshold=0.5, timing_ms=40.0, backend="sdk",
+    score=0.91,
+    label="suspicious",
+    model="0dinai/susfactor-e5-large",
+    threshold=0.5,
+    timing_ms=40.0,
+    backend="sdk",
 )
 SAFE = SusResult(
-    score=0.07, label="safe", model="0dinai/susfactor-e5-large",
-    threshold=0.5, timing_ms=35.0, backend="sdk",
+    score=0.07,
+    label="safe",
+    model="0dinai/susfactor-e5-large",
+    threshold=0.5,
+    timing_ms=35.0,
+    backend="sdk",
 )
 
 
@@ -67,7 +75,11 @@ async def test_response_text_suspicious_blocks() -> None:
 
     with pytest.raises(GuardrailRaisedException):
         await g.apply_guardrail(
-            inputs={"texts": ["Here is how to bypass security..."], "images": None, "tool_calls": None},
+            inputs={
+                "texts": ["Here is how to bypass security..."],
+                "images": None,
+                "tool_calls": None,
+            },
             request_data={},
             input_type="response",
         )

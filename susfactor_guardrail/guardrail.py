@@ -82,7 +82,6 @@ class SusFactorGuardrail(CustomGuardrail):
         self._fail_open = fail_open
         self._scan_output = scan_output
 
-
         # Resolve model_cache_dir from env if not explicitly passed
         resolved_cache_dir = model_cache_dir or os.environ.get("SIGNATURE_SDK_MODEL_CACHE")
 
@@ -331,9 +330,7 @@ class SusFactorGuardrail(CustomGuardrail):
         across all scored texts (block > flag > shadow > allow).
         Returns ``None`` when no susfactor records exist.
         """
-        records: list[dict[str, Any]] = (
-            data.get("metadata", {}).get("susfactor", [])
-        )
+        records: list[dict[str, Any]] = data.get("metadata", {}).get("susfactor", [])
         if not records:
             return None
 
