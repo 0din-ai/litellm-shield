@@ -1,0 +1,28 @@
+# litellm-shield — shadow mode (latency and accuracy validation)
+#
+# All requests are allowed through. SusFactor scores every prompt but never
+# blocks or annotates responses. Use this to:
+#   - Measure P50/P95 latency impact under real traffic
+#   - Collect ground-truth labels for FPR/TPR analysis
+#   - Validate model accuracy before enabling enforcement
+#
+# Check logs for lines matching: susfactor decision=shadow score=...
+
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+guardrails:
+  - guardrail_name: "susfactor"
+    litellm_params:
+      guardrail: susfactor_guardrail.SusFactorGuardrail
+      mode: "during_call"
+      action: "shadow"        # never block — record only
+      threshold: 0.5
+      fail_open: true
+      backend: "sdk"
+
+litellm_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

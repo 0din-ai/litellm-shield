@@ -1,0 +1,33 @@
+# litellm-shield — block mode (hard enforcement)
+#
+# Suspicious requests are REJECTED before reaching the LLM. The client
+# receives a 400-level error with a guardrail violation message.
+#
+# Recommended: validate FPR with flag/shadow mode first before enabling this.
+# Austrian National Bank / enterprise deployments: set fail_open: false to
+# also block when the model is unavailable (fail-closed posture).
+
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+guardrails:
+  - guardrail_name: "susfactor"
+    litellm_params:
+      guardrail: susfactor_guardrail.SusFactorGuardrail
+      mode: "pre_call"        # block BEFORE the LLM call (never reaches upstream)
+      action: "block"
+      threshold: 0.5
+      fail_open: true         # set false for fail-closed (enterprise) posture
+      backend: "sdk"
+      scan_output: false      # set true to also reject suspicious model responses
+
+litellm_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

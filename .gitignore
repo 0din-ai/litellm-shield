@@ -45,5 +45,9 @@ Thumbs.db
 # LiteLLM proxy config (may contain secrets)
 litellm_proxy_config.yaml
 
+# Environment / secrets
+.env
+*.env.local
+
 # OpenCode tooling (plans are tracked separately if desired)
 .opencode/node_modules/

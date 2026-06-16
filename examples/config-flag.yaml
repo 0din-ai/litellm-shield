@@ -1,0 +1,35 @@
+# litellm-shield — flag mode (recommended for initial POC deployments)
+#
+# Suspicious requests are ALLOWED through but annotated in logs and tagged
+# with an X-SusFactor-Decision response header. Use this to measure real-world
+# false positive rate before switching to block mode.
+#
+# Start: docker compose up
+# Or:    litellm --config examples/config-flag.yaml
+
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+guardrails:
+  - guardrail_name: "susfactor"
+    litellm_params:
+      guardrail: susfactor_guardrail.SusFactorGuardrail
+      mode: "during_call"     # runs in parallel with the LLM call — hides latency
+      action: "flag"          # allow through, annotate decision
+      threshold: 0.5
+      fail_open: true         # if model unavailable, allow the request
+      backend: "sdk"
+      scan_output: false      # set true to also score model responses
+
+litellm_settings:
+  # Require guardrails to be explicitly requested per-call.
+  # Set default_on: true on the guardrail above to apply to all calls.
+  master_key: os.environ/LITELLM_MASTER_KEY
