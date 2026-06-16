@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import sys
 import time
@@ -53,7 +54,10 @@ from typing import Optional
 # Data types
 # ---------------------------------------------------------------------------
 
-# Test prompts — mix of safe and jailbreak-style to exercise the classifier
+# Test prompts — intentional mix of benign and jailbreak-style inputs to exercise
+# the SusFactor classifier across its full score range. The jailbreak prompts
+# ("Ignore all previous instructions", "You are now DAN") are test vectors, not
+# real attacks. They should score high (>0.9) and validate the guardrail fires correctly.
 _TEST_PROMPTS = [
     "What is the capital of France?",
     "Explain how photosynthesis works.",
@@ -183,7 +187,12 @@ def compute_stats(results: list[RequestResult]) -> LatencyStats:
     successes = [r for r in results if r.success]
     errors = [r for r in results if not r.success]
 
-    e2e = sorted(r.elapsed_ms for r in successes) if successes else [0.0]
+    if not successes:
+        raise ValueError(
+            f"All {len(results)} request(s) failed — no successful results to compute "
+            "statistics from. Check that the proxy is running and reachable."
+        )
+    e2e = sorted(r.elapsed_ms for r in successes)
     guardrail_times = sorted(
         r.guardrail_latency_ms for r in successes if r.guardrail_latency_ms is not None
     )
@@ -278,30 +287,45 @@ def format_report(
         report = json.dumps(flat, indent=2)
     else:
 
+        width = 51  # total inner width between outer │ chars
+
         def _fmt(v: Optional[float]) -> str:
             return f"{v:>6.1f}" if v is not None else "   n/a"
 
+        def _padded(content: str) -> str:
+            """Pad content to fill a table row (width - 2 for the │ chars)."""
+            inner = width - 2
+            return f"│ {content:<{inner}}│"
+
+        has_guardrail = stats.guardrail_p50_ms is not None
+
         lines = [
-            "┌─────────────────────────────────────────────────┐",
-            "│  SusFactor Latency Report                       │",
-            f"│  Requests: {total_requests:<6}  Concurrency: {concurrency:<6}         │",
+            "┌" + "─" * (width - 2) + "┐",
+            _padded("SusFactor Latency Report"),
+            _padded(f"Requests: {total_requests:<6}  Concurrency: {concurrency}"),
             "├─────────────────┬──────────┬──────────┬─────────┤",
             "│                 │   P50    │   P95    │   P99   │",
             "├─────────────────┼──────────┼──────────┼─────────┤",
             f"│  E2E (ms)       │{_fmt(stats.p50_ms)} ms │{_fmt(stats.p95_ms)} ms │{_fmt(stats.p99_ms)} ms│",
-            f"│  Guardrail (ms) │{_fmt(stats.guardrail_p50_ms)} ms │{_fmt(stats.guardrail_p95_ms)} ms │{_fmt(stats.guardrail_p99_ms)} ms│",
+        ]
+        if has_guardrail:
+            lines.append(
+                f"│  Guardrail (ms) │{_fmt(stats.guardrail_p50_ms)} ms "
+                f"│{_fmt(stats.guardrail_p95_ms)} ms │{_fmt(stats.guardrail_p99_ms)} ms│"
+            )
+        lines += [
             "├─────────────────┴──────────┴──────────┴─────────┤",
-            f"│  Min: {stats.min_ms:.1f} ms   Max: {stats.max_ms:.1f} ms   Mean: {stats.mean_ms:.1f} ms"
-            + "  " * 3
-            + "│",
-            f"│  Success: {stats.success_count}/{stats.count}   Errors: {stats.error_count}"
-            + " " * 20
-            + "│",
+            _padded(
+                f"Min: {stats.min_ms:.1f} ms   Max: {stats.max_ms:.1f} ms   Mean: {stats.mean_ms:.1f} ms"
+            ),
+            _padded(f"Success: {stats.success_count}/{stats.count}   Errors: {stats.error_count}"),
         ]
         if stats.decision_counts:
             counts_str = "  ".join(f"{k}:{v}" for k, v in sorted(stats.decision_counts.items()))
-            lines.append(f"│  Decisions: {counts_str}" + " " * max(0, 37 - len(counts_str)) + "│")
-        lines.append("└─────────────────────────────────────────────────┘")
+            lines.append(_padded(f"Decisions: {counts_str}"))
+        if not has_guardrail:
+            lines.append(_padded("Note: guardrail latency only available in --from-logs mode"))
+        lines.append("└" + "─" * (width - 2) + "┘")
         report = "\n".join(lines)
 
     if output_file is not None:
@@ -401,9 +425,13 @@ async def _run_load(
     semaphore = asyncio.Semaphore(concurrency)
     results: list[RequestResult] = []
 
-    async def bounded(i: int, prompt: str) -> None:
-        async with semaphore:
-            async with httpx.AsyncClient() as client:
+    # Single shared client for all requests — enables connection pooling so TCP/TLS
+    # handshakes happen once per connection, not once per request. Without this,
+    # every request would add 10-100ms of handshake overhead, inflating measurements.
+    async with httpx.AsyncClient() as client:
+
+        async def bounded(i: int, prompt: str) -> None:
+            async with semaphore:
                 result = await _send_request(client, i, url, api_key, model, prompt, timeout)
                 results.append(result)
                 status = (
@@ -411,7 +439,7 @@ async def _run_load(
                 )
                 print(f"  [{i+1:>4}/{total}] {result.elapsed_ms:>7.1f}ms  {status}", flush=True)
 
-    await asyncio.gather(*[bounded(i, p) for i, p in enumerate(prompts)])
+        await asyncio.gather(*[bounded(i, p) for i, p in enumerate(prompts)])
     return results
 
 
@@ -451,7 +479,11 @@ def main() -> None:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--url", default="http://localhost:4000", help="Proxy base URL")
-    parser.add_argument("--api-key", default="sk-1234", help="LiteLLM master key")
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("LITELLM_MASTER_KEY"),
+        help="LiteLLM master key (default: $LITELLM_MASTER_KEY env var)",
+    )
     parser.add_argument("--model", default="gpt-4o-mini", help="Model name")
     parser.add_argument("--requests", type=int, default=50, help="Total number of requests")
     parser.add_argument("--concurrency", type=int, default=10, help="Concurrent workers")
@@ -466,6 +498,12 @@ def main() -> None:
         help="Parse latency from proxy log file instead of running live load",
     )
     args = parser.parse_args()
+
+    if not args.from_logs and not args.api_key:
+        parser.error(
+            "No API key provided. Set LITELLM_MASTER_KEY env var or use --api-key. "
+            "(Log-parse mode with --from-logs does not require an API key.)"
+        )
 
     if args.from_logs:
         print(f"Parsing log file: {args.from_logs}", file=sys.stderr)

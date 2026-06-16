@@ -173,6 +173,24 @@ def test_compute_stats_empty_raises() -> None:
         compute_stats([])
 
 
+def test_compute_stats_all_failures_raises() -> None:
+    """All-failure batch raises rather than returning misleading 0.0 percentiles."""
+    failures = [
+        RequestResult(
+            index=i,
+            elapsed_ms=5000.0,
+            status_code=None,
+            guardrail_latency_ms=None,
+            decision=None,
+            score=None,
+            error="Connection refused",
+        )
+        for i in range(3)
+    ]
+    with pytest.raises(ValueError, match="All.*failed"):
+        compute_stats(failures)
+
+
 # ---------------------------------------------------------------------------
 # format_report
 # ---------------------------------------------------------------------------
@@ -188,6 +206,27 @@ def test_format_report_contains_key_fields() -> None:
     assert "P99" in report
     assert "5" in report  # concurrency or count
     assert "error" in report.lower() or "Error" in report
+
+
+def test_format_report_omits_guardrail_row_when_no_guardrail_data() -> None:
+    """Live-load results (no guardrail_latency_ms) omit the guardrail row and show a note."""
+    results = [
+        RequestResult(
+            index=i,
+            elapsed_ms=100.0 + i * 10,
+            status_code=200,
+            guardrail_latency_ms=None,  # live-load: not available in headers
+            decision="flag",
+            score=0.1,
+            error=None,
+        )
+        for i in range(5)
+    ]
+    stats = compute_stats(results)
+    report = format_report(stats, concurrency=5, total_requests=5)
+
+    assert "Guardrail (ms)" not in report
+    assert "from-logs" in report  # note directing user to log-parse mode
 
 
 def test_format_report_json_output() -> None:
