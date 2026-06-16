@@ -60,7 +60,7 @@ Verify the layout:
 
 ```bash
 # Copy your API key into the environment
-export OPENAI_API_KEY=sk-...
+export OPENROUTER_API_KEY=sk-or-...
 export LITELLM_MASTER_KEY=sk-1234   # proxy auth key for clients
 
 # Start (flag mode by default — annotates but never blocks)
@@ -73,6 +73,8 @@ To use a different config:
 ```bash
 LITELLM_CONFIG_FILE=./examples/config-block.yaml docker compose up
 ```
+
+Models route through OpenRouter — any model string OpenRouter supports works (e.g. `openrouter/anthropic/claude-sonnet-4-5`, `openrouter/google/gemini-2.0-flash`). See [openrouter.ai/models](https://openrouter.ai/models).
 
 To use a different cache location:
 ```bash
@@ -176,7 +178,7 @@ uv run mypy susfactor_guardrail/
 ```bash
 uv sync
 SIGNATURE_SDK_MODEL_CACHE=~/.cache/signature-sdk/models \
-OPENAI_API_KEY=sk-... \
+OPENROUTER_API_KEY=sk-or-... \
 uv run litellm --config examples/config-flag.yaml --port 4000
 ```
 
