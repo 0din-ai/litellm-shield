@@ -40,6 +40,6 @@ guardrails:
       default_on: true
 
 litellm_settings:
-  # Require guardrails to be explicitly requested per-call.
-  # Set default_on: true on the guardrail above to apply to all calls.
+  # Master key for LiteLLM proxy authentication (clients use this as their Bearer token).
+  # The guardrail runs on all requests automatically via default_on: true above.
   master_key: os.environ/LITELLM_MASTER_KEY

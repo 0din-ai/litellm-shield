@@ -104,7 +104,7 @@ curl -i http://localhost:4000/v1/chat/completions \
 In `flag` mode: request goes through, response includes `X-SusFactor-Decision: flag;score=0.9xxx`.
 In `block` mode: returns a 400-level error.
 
-> **Per-request opt-in:** Set `default_on: false` in the config to require callers to explicitly pass `"guardrails": ["susfactor"]` in the request body. Useful for multi-tenant deployments where only some clients should be scanned.
+**Multi-tenant / per-request opt-in:** Set `default_on: false` in the config to require callers to explicitly pass `"guardrails": ["susfactor"]` in the request body. Use this when only some clients or routes should be scanned — for example, a shared proxy where internal tooling and external users share the same endpoint.
 
 ---
 
