@@ -12,7 +12,7 @@ Runs the **0DIN SusFactor classifier** in-process — an e5-large encoder + MLP 
 
 1. LiteLLM calls `SusFactorGuardrail.apply_guardrail(inputs, ...)` for every request.
 2. Each text (user message, assistant response, tool-call arguments) is scored: `P(suspicious) ∈ [0, 1]`.
-3. The configured **action** is applied:
+3. The configured **enforcement** is applied:
    - `flag` — allow through, annotate in logs + `X-SusFactor-Decision` response header. **Default for POCs.**
    - `shadow` — allow through, record only (no client annotation). Use for latency/accuracy validation.
    - `block` — reject the request with a `GuardrailRaisedException` before it reaches the upstream model.
@@ -25,7 +25,7 @@ Runs the **0DIN SusFactor classifier** in-process — an e5-large encoder + MLP 
 - [uv](https://docs.astral.sh/uv/) (`asdf install uv latest` or `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - Docker + Docker Compose (for the container path)
 - A HuggingFace account with access to [`0dinai/susfactor-e5-large`](https://huggingface.co/0dinai/susfactor-e5-large) (gated — request access first)
-- An LLM provider API key (OpenAI, Anthropic, etc.)
+- An [OpenRouter](https://openrouter.ai) API key (`OPENROUTER_API_KEY`)
 
 ---
 
@@ -137,17 +137,17 @@ guardrails:
 | `pre_call`      | Before the LLM API call                  | Yes |
 | `post_call`     | After the LLM API call (assembled response) | Non-streaming only |
 
-| `action`  | Suspicious prompt    | Safe prompt    |
-|-----------|---------------------|----------------|
-| `flag`    | Allow + annotate    | Allow          |
-| `shadow`  | Allow + log only    | Allow          |
-| `block`   | Reject              | Allow          |
+| `enforcement` | Suspicious prompt | Safe prompt |
+|---------------|-------------------|-------------|
+| `flag`        | Allow + annotate  | Allow       |
+| `shadow`      | Allow + log only  | Allow       |
+| `block`       | Reject            | Allow       |
 
 ### Observability
 
 Every scored text emits a structured log line:
 ```
-susfactor decision=flag score=0.9137 label=suspicious threshold=0.50 action=flag input_type=request latency_ms=42.3 backend=sdk model=0dinai/susfactor-e5-large
+susfactor decision=flag score=0.9137 label=suspicious threshold=0.50 enforcement=flag input_type=request latency_ms=42.3 backend=sdk model=0dinai/susfactor-e5-large
 ```
 
 `StandardLoggingGuardrailInformation` is written to `request_data["metadata"]` and picked up automatically by LiteLLM's Langfuse, Datadog, and OpenTelemetry integrations.
@@ -186,9 +186,9 @@ uv run litellm --config examples/config-flag.yaml --port 4000
 
 ## Enforcement rollout path
 
-1. **Shadow** — deploy with `action: shadow`. Zero impact on traffic. Collect scores in logs.
-2. **Flag** — switch to `action: flag`. Monitor `X-SusFactor-Decision` headers and FPR in logs.
-3. **Block** — once FPR is acceptable, switch to `action: block` (and optionally `mode: pre_call`).
+1. **Shadow** — deploy with `enforcement: shadow`. Zero impact on traffic. Collect scores in logs.
+2. **Flag** — switch to `enforcement: flag`. Monitor `X-SusFactor-Decision` headers and FPR in logs.
+3. **Block** — once FPR is acceptable, switch to `enforcement: block` (and optionally `mode: pre_call`).
 
 For enterprise / fail-closed deployments (e.g. Austrian National Bank), set `fail_open: false` — requests are blocked when the model is unavailable rather than allowed through.
 
@@ -211,8 +211,32 @@ The `SusFactorBackend` protocol allows a future Heimdall HTTP backend to be swap
 
 ## Latency
 
-Target: < 500ms per request on CPU. Actual latency depends on hardware and prompt length.
+Benchmarked at 50 requests, concurrency 10, CPU/Docker on Apple Silicon:
 
-The classifier is loaded once at first request (lazy load, `asyncio.Lock`-guarded). Subsequent calls reuse the loaded model.
+| | No guardrail | With guardrail | Overhead |
+|---|---|---|---|
+| P50 | 532 ms | 1,081 ms | ~549 ms |
+| P95 | 1,166 ms | 2,292 ms | ~1,126 ms |
 
-To measure P50/P95 under concurrent load, use `action: shadow` with real traffic and grep the structured log lines for `latency_ms=`.
+**In `during_call` parallel mode, user-visible latency penalty ≈ 0 ms** — the guardrail runs alongside the LLM call, so the effective cost is `max(guardrail, model) − model`. When the upstream model call dominates (as it almost always does), the overhead is hidden entirely. The ~549 ms P50 classifier overhead only matters for `pre_call` (hard-block before the model).
+
+The classifier is loaded once at first request (lazy load, `asyncio.Lock`-guarded). The first request after startup will be slower while the model loads.
+
+### Running the latency report
+
+```bash
+# Start proxy in shadow mode
+LITELLM_CONFIG_FILE=./examples/config-shadow.yaml docker compose up -d
+
+# Run report (50 requests, concurrency 10)
+LITELLM_MASTER_KEY=sk-1234 uv run python scripts/latency_report.py \
+  --requests 50 --concurrency 10
+
+# Save JSON report
+LITELLM_MASTER_KEY=sk-1234 uv run python scripts/latency_report.py \
+  --requests 100 --concurrency 20 --format json --output report.json
+
+# Parse from captured proxy logs
+docker compose logs litellm > proxy.log
+uv run python scripts/latency_report.py --from-logs proxy.log --format json --output report.json
+```
