@@ -55,10 +55,6 @@ class SusResult:
     timing_ms: Optional[float]
     backend: str
 
-    @property
-    def is_suspicious(self) -> bool:
-        return self.label == "suspicious"
-
 
 class SusFactorUnavailable(Exception):
     """Raised when a backend cannot produce a score.
