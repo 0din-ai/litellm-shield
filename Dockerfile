@@ -31,7 +31,8 @@ RUN uv pip install --system \
         wheels/odin_prompt_toolkit-*.whl \
         "litellm[proxy]>=1.0.0" \
         "torch>=2.0.0" \
-        "transformers>=4.0.0"
+        "transformers>=4.0.0" \
+        "onnxruntime>=1.16.0"
 
 # ---- install the guardrail package -------------------------------------
 COPY susfactor_guardrail/ ./susfactor_guardrail/
