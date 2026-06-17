@@ -22,7 +22,7 @@ guardrails:
       enforcement: "shadow"   # never block — record only
       threshold: 0.5
       fail_open: true
-      backend: "sdk"
+      backend: "sdk-onnx"  # ONNX Runtime — faster on CPU; use sdk for torch path
       # default_on: true applies the guardrail to every request automatically.
       # Without it, callers must include "guardrails": ["susfactor"] in the request body.
       # Recommended for shadow mode: you want to score all traffic, not just

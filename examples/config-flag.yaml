@@ -31,7 +31,10 @@ guardrails:
       enforcement: "flag"     # allow through, annotate decision
       threshold: 0.5
       fail_open: true         # if model unavailable, allow the request
-      backend: "sdk"
+      # sdk-onnx: ONNX Runtime — ~3-5× faster on CPU, no torch at inference time.
+      #           Requires the ONNX model artifact (see scripts/provision_model.py --onnx).
+      # sdk:      PyTorch — slower but uses the same weights as the training environment.
+      backend: "sdk-onnx"
       scan_output: false      # set true to also score model responses
       # default_on: true applies the guardrail to every request automatically.
       # Without it, callers must include "guardrails": ["susfactor"] in the request body.

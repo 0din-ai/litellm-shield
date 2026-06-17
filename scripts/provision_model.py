@@ -1,31 +1,35 @@
 #!/usr/bin/env python3
-"""Download the gated 0dinai/susfactor-e5-large model into the local cache.
+"""Download SusFactor model artifacts into the local cache.
 
-The SusFactor classifier requires two components:
-  - encoder/   — the e5-large HuggingFace model (config, weights, tokenizer)
-  - head.pt    — the trained MLP classification head
+Two artifacts are available:
 
-Both live under the susfactor-v1 version directory inside the model cache.
+  torch (default):
+    Repo: 0dinai/susfactor-e5-large  (gated — requires HF access)
+    Layout: <cache>/susfactor-v1/encoder/{config,model.safetensors,tokenizer.json}
+            <cache>/susfactor-v1/head.pt
+    Backend: backend: "sdk"
+
+  onnx (recommended for production / latency-sensitive use):
+    Repo: 0dinai/susfactor-e5-large-onnx  (gated — requires HF access)
+    Layout: <cache>/susfactor-v1/onnx/model.onnx
+            <cache>/susfactor-v1/tokenizer.json
+            <cache>/susfactor-v1/tokenizer_config.json
+    Backend: backend: "sdk-onnx"
 
 Usage
 -----
-    # Interactive (prompts for HF token if HF_TOKEN not set):
+    # Provision ONNX model (recommended):
+    uv run python scripts/provision_model.py --onnx
+
+    # Provision torch model:
     uv run python scripts/provision_model.py
 
-    # Non-interactive (CI / Docker build):
-    HF_TOKEN=hf_... uv run python scripts/provision_model.py
+    # Provision both:
+    uv run python scripts/provision_model.py --onnx && uv run python scripts/provision_model.py
 
-    # Custom cache dir:
-    uv run python scripts/provision_model.py --cache-dir /data/models
-
-The script writes files to:
-    <cache>/susfactor-v1/encoder/config.json
-    <cache>/susfactor-v1/encoder/model.safetensors
-    <cache>/susfactor-v1/encoder/tokenizer.json
-    <cache>/susfactor-v1/head.pt
-
-After provisioning, verify with:
+    # Check what's present:
     uv run python scripts/provision_model.py --check
+    uv run python scripts/provision_model.py --onnx --check
 """
 
 from __future__ import annotations
@@ -35,16 +39,23 @@ import os
 import sys
 from pathlib import Path
 
-REPO_ID = "0dinai/susfactor-e5-large"
 MODEL_VERSION = "susfactor-v1"
 DEFAULT_CACHE_ENV = "SIGNATURE_SDK_MODEL_CACHE"
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "signature-sdk" / "models"
 
-REQUIRED_FILES = (
+TORCH_REPO_ID = "0dinai/susfactor-e5-large"
+TORCH_REQUIRED_FILES = (
     "encoder/config.json",
     "encoder/model.safetensors",
     "encoder/tokenizer.json",
     "head.pt",
+)
+
+ONNX_REPO_ID = "0dinai/susfactor-e5-large-onnx"
+ONNX_REQUIRED_FILES = (
+    "onnx/model.onnx",
+    "tokenizer.json",
+    "tokenizer_config.json",
 )
 
 
@@ -57,34 +68,23 @@ def resolve_cache_dir(override: str | None) -> Path:
     return DEFAULT_CACHE_DIR
 
 
-def check(cache_dir: Path) -> bool:
+def check(cache_dir: Path, onnx: bool = False) -> bool:
     """Return True if all required model files are present."""
     model_dir = cache_dir / MODEL_VERSION
-    missing = [f for f in REQUIRED_FILES if not (model_dir / f).exists()]
+    required = ONNX_REQUIRED_FILES if onnx else TORCH_REQUIRED_FILES
+    label = "ONNX" if onnx else "torch"
+    missing = [f for f in required if not (model_dir / f).exists()]
     if missing:
-        print(f"[check] Missing files in {model_dir}:")
+        print(f"[check] {label} — missing files in {model_dir}:")
         for f in missing:
             print(f"  - {f}")
         return False
-    print(f"[check] All model files present in {model_dir}")
+    print(f"[check] {label} — all model files present in {model_dir}")
     return True
 
 
-def provision(cache_dir: Path, token: str | None) -> None:
-    """Download the model from HuggingFace into cache_dir/susfactor-v1/."""
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError:
-        print("ERROR: huggingface_hub is not installed.")
-        print("       Run: uv run pip install huggingface_hub")
-        sys.exit(1)
-
-    model_dir = cache_dir / MODEL_VERSION
-    encoder_dir = model_dir / "encoder"
-    encoder_dir.mkdir(parents=True, exist_ok=True)
-
+def _resolve_token(repo_id: str, token: str | None) -> str | None:
     if not token:
-        # Check common env var names
         token = (
             os.environ.get("HF_TOKEN")
             or os.environ.get("HUGGING_FACE_HUB_TOKEN")
@@ -92,20 +92,16 @@ def provision(cache_dir: Path, token: str | None) -> None:
         )
 
     if not token:
-        # huggingface_hub also reads ~/.cache/huggingface/token automatically
-        # (written by `huggingface-cli login`). Check if it exists before prompting.
         hf_token_file = Path.home() / ".cache" / "huggingface" / "token"
         if hf_token_file.exists():
             print(f"INFO: Using stored HuggingFace token from {hf_token_file}")
-            # Let huggingface_hub read it automatically — don't pass token= explicitly
         else:
             print(
-                f"INFO: No HuggingFace token found. The model {REPO_ID!r} is gated.\n"
+                f"INFO: No HuggingFace token found. The model {repo_id!r} is gated.\n"
                 "      Options:\n"
                 "        1. Run: huggingface-cli login\n"
                 "        2. Set: export HF_TOKEN=hf_...\n"
-                "        3. Pass: --token hf_...\n"
-                "      Request access at: https://huggingface.co/0dinai/susfactor-e5-large"
+                "        3. Pass: --token hf_..."
             )
             if sys.stdin.isatty():
                 token = input("HuggingFace token (or press Enter to abort): ").strip() or None
@@ -116,23 +112,34 @@ def provision(cache_dir: Path, token: str | None) -> None:
                 print("Aborted (non-interactive).")
                 sys.exit(1)
 
-    print(f"Downloading {REPO_ID} → {model_dir}")
+    return token
 
-    # The HF repo layout mirrors the expected cache layout exactly:
-    #   encoder/config.json
-    #   encoder/model.safetensors
-    #   encoder/tokenizer.json
-    #   head.pt
-    # Download the whole repo into model_dir and it lands correctly.
+
+def provision(cache_dir: Path, token: str | None, onnx: bool = False) -> None:
+    """Download the model from HuggingFace into cache_dir/susfactor-v1/."""
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError:
+        print("ERROR: huggingface_hub is not installed.")
+        print("       Run: uv run pip install huggingface_hub")
+        sys.exit(1)
+
+    repo_id = ONNX_REPO_ID if onnx else TORCH_REPO_ID
+    model_dir = cache_dir / MODEL_VERSION
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    token = _resolve_token(repo_id, token)
+
+    print(f"Downloading {repo_id} → {model_dir}")
     snapshot_download(
-        repo_id=REPO_ID,
+        repo_id=repo_id,
         local_dir=str(model_dir),
         token=token,
         ignore_patterns=["*.md", ".gitattributes"],
     )
 
     print("\nProvisioning complete. Verifying...")
-    ok = check(cache_dir)
+    ok = check(cache_dir, onnx=onnx)
     if not ok:
         print("\nWARNING: Some files are missing. The download may have been partial.")
         sys.exit(1)
@@ -140,9 +147,24 @@ def provision(cache_dir: Path, token: str | None) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Provision the SusFactor model cache.")
+    parser = argparse.ArgumentParser(
+        description="Provision the SusFactor model cache.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  provision ONNX (recommended):  uv run python scripts/provision_model.py --onnx\n"
+            "  provision torch:               uv run python scripts/provision_model.py\n"
+            "  check both:                    uv run python scripts/provision_model.py --check\n"
+            "                                 uv run python scripts/provision_model.py --onnx --check"
+        ),
+    )
     parser.add_argument("--cache-dir", help="Override model cache directory.")
     parser.add_argument("--token", help="HuggingFace API token (or set HF_TOKEN env var).")
+    parser.add_argument(
+        "--onnx",
+        action="store_true",
+        help="Provision the ONNX model (0dinai/susfactor-e5-large-onnx) instead of torch.",
+    )
     parser.add_argument(
         "--check",
         action="store_true",
@@ -154,14 +176,14 @@ def main() -> None:
     print(f"Model cache: {cache_dir}")
 
     if args.check:
-        ok = check(cache_dir)
+        ok = check(cache_dir, onnx=args.onnx)
         sys.exit(0 if ok else 1)
 
-    if check(cache_dir):
-        print("Model already provisioned. Use --force to re-download (not implemented).")
+    if check(cache_dir, onnx=args.onnx):
+        print("Model already provisioned.")
         return
 
-    provision(cache_dir, token=args.token)
+    provision(cache_dir, token=args.token, onnx=args.onnx)
 
 
 if __name__ == "__main__":

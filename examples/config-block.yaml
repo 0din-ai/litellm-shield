@@ -26,7 +26,7 @@ guardrails:
       enforcement: "block"
       threshold: 0.5
       fail_open: true         # set false for fail-closed (enterprise) posture
-      backend: "sdk"
+      backend: "sdk-onnx"     # ONNX Runtime — faster on CPU; use sdk for torch path
       scan_output: false      # set true to also reject suspicious model responses
       # default_on: true applies the guardrail to every request automatically.
       # Without it, callers must include "guardrails": ["susfactor"] in the request body.
