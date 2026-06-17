@@ -11,8 +11,8 @@
 model_list:
   - model_name: gpt-4o-mini
     litellm_params:
-      model: openai/gpt-4o-mini
-      api_key: os.environ/OPENAI_API_KEY
+      model: openrouter/openai/gpt-4o-mini
+      api_key: os.environ/OPENROUTER_API_KEY
 
 guardrails:
   - guardrail_name: "susfactor"

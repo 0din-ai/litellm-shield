@@ -39,9 +39,7 @@ services:
         read_only: true
     environment:
       SIGNATURE_SDK_MODEL_CACHE: /model-cache
-      # Pass through your LLM provider key(s)
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-1234}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
