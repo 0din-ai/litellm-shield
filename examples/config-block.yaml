@@ -28,6 +28,11 @@ guardrails:
       fail_open: true         # set false for fail-closed (enterprise) posture
       backend: "sdk"
       scan_output: false      # set true to also reject suspicious model responses
+      # default_on: true applies the guardrail to every request automatically.
+      # Without it, callers must include "guardrails": ["susfactor"] in the request body.
+      # In block mode this is almost always what you want — enforcement should not
+      # depend on the caller correctly opting in.
+      default_on: true
 
 litellm_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
