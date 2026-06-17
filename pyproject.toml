@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "litellm-shield"
 version = "0.1.0"
 description = "SusFactor jailbreak/prompt-injection guardrail for LiteLLM"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "Proprietary"}
 authors = [
     {name = "0DIN Team"},
