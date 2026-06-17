@@ -36,7 +36,7 @@ from litellm.exceptions import GuardrailRaisedException
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.proxy._types import UserAPIKeyAuth
 
-from susfactor_guardrail.backend import SdkBackend, SusFactorUnavailable
+from susfactor_guardrail.backend import OnnxSdkBackend, SdkBackend, SusFactorUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -85,15 +85,20 @@ class SusFactorGuardrail(CustomGuardrail):
         # Resolve model_cache_dir from env if not explicitly passed
         resolved_cache_dir = model_cache_dir or os.environ.get("SIGNATURE_SDK_MODEL_CACHE")
 
-        # Build backend — only "sdk" supported in v1; seam for "heimdall" later
         if backend == "sdk":
-            self._backend: SdkBackend = SdkBackend(
+            self._backend: SdkBackend | OnnxSdkBackend = SdkBackend(
+                model_cache_dir=resolved_cache_dir,
+                threshold=threshold,
+                device=device,
+            )
+        elif backend == "sdk-onnx":
+            self._backend = OnnxSdkBackend(
                 model_cache_dir=resolved_cache_dir,
                 threshold=threshold,
                 device=device,
             )
         else:
-            raise ValueError(f"Unknown backend {backend!r}. Supported: 'sdk'")
+            raise ValueError(f"Unknown backend {backend!r}. Supported: 'sdk', 'sdk-onnx'")
 
         super().__init__(**kwargs)
 

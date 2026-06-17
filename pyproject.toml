@@ -25,13 +25,13 @@ classifiers = [
 ]
 dependencies = [
     "litellm[proxy]>=1.0.0",
-    "odin-prompt-toolkit[susfactor]",
+    "odin-prompt-toolkit[susfactor,onnx]",
 ]
 
 [tool.uv.sources]
 # Wheel is pre-built locally (requires SSH access to the private repo).
 # Committed to wheels/ so CI and Docker builds work without credentials.
-odin-prompt-toolkit = {path = "wheels/odin_prompt_toolkit-0.4.0-py3-none-any.whl"}
+odin-prompt-toolkit = {path = "wheels/odin_prompt_toolkit-0.5.0-py3-none-any.whl"}
 
 [project.optional-dependencies]
 dev = [
