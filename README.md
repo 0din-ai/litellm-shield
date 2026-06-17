@@ -211,19 +211,31 @@ The `SusFactorBackend` protocol allows a future Heimdall HTTP backend to be swap
 
 Benchmarked at 50 requests, concurrency 10, CPU/Docker on Apple Silicon:
 
-| | No guardrail | With guardrail | Overhead |
-|---|---|---|---|
-| P50 | 532 ms | 1,081 ms | ~549 ms |
-| P95 | 1,166 ms | 2,292 ms | ~1,126 ms |
+**ONNX backend (`sdk-onnx`, default) — pure classifier:**
 
-**In `during_call` parallel mode, user-visible latency penalty ≈ 0 ms** — the guardrail runs alongside the LLM call, so the effective cost is `max(guardrail, model) − model`. When the upstream model call dominates (as it almost always does), the overhead is hidden entirely. The ~549 ms P50 classifier overhead only matters for `pre_call` (hard-block before the model).
+| Metric | Latency |
+|--------|---------|
+| P50 | **15.6 ms** |
+| P95 | **23.9 ms** |
+| P99 | **26.5 ms** |
+
+**End-to-end (proxy + OpenRouter + classifier):**
+
+| | No guardrail | ONNX guardrail | Torch guardrail |
+|---|---|---|---|
+| P50 | 711 ms | 986 ms | 1,081 ms |
+| P95 | 986 ms | 2,578 ms | 2,292 ms |
+
+**In `during_call` parallel mode, user-visible latency penalty ≈ 0 ms** — the guardrail runs alongside the LLM call, so the effective cost is `max(guardrail, model) − model`. At P50 classifier overhead of ~16 ms vs an LLM call of 700 ms+, the guardrail is fully hidden. The pure classifier latency only matters for `pre_call` (hard-block before the model).
+
+The ONNX backend is ~35× faster than the torch backend on CPU (16 ms vs ~550 ms) because the full graph (encoder + mean-pool + MLP head) is baked into a single ONNX file with dynamic padding — short prompts don't run 512-token inference.
 
 The classifier is loaded once at first request (lazy load, `asyncio.Lock`-guarded). The first request after startup will be slower while the model loads.
 
 ### Running the latency report
 
 ```bash
-# Start proxy in shadow mode
+# Start proxy in shadow mode (sdk-onnx backend by default)
 LITELLM_CONFIG_FILE=./examples/config-shadow.yaml docker compose up -d
 
 # Run report (50 requests, concurrency 10)
