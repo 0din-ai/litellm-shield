@@ -33,6 +33,11 @@ guardrails:
       fail_open: true         # if model unavailable, allow the request
       backend: "sdk"
       scan_output: false      # set true to also score model responses
+      # default_on: true applies the guardrail to every request automatically.
+      # Without it, callers must include "guardrails": ["susfactor"] in the request body.
+      # Set to false (or omit) when you want per-request opt-in, e.g. multi-tenant
+      # deployments where only some clients should be scanned.
+      default_on: true
 
 litellm_settings:
   # Require guardrails to be explicitly requested per-call.

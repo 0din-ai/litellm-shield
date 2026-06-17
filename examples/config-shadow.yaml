@@ -23,6 +23,11 @@ guardrails:
       threshold: 0.5
       fail_open: true
       backend: "sdk"
+      # default_on: true applies the guardrail to every request automatically.
+      # Without it, callers must include "guardrails": ["susfactor"] in the request body.
+      # Recommended for shadow mode: you want to score all traffic, not just
+      # requests that explicitly ask for the guardrail.
+      default_on: true
 
 litellm_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

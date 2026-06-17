@@ -1,0 +1,26 @@
+{
+  "total_requests": 50,
+  "concurrency": 10,
+  "success_count": 50,
+  "error_count": 0,
+  "e2e": {
+    "p50_ms": 1081.0,
+    "p95_ms": 2291.91,
+    "p99_ms": 2799.09,
+    "min_ms": 603.63,
+    "max_ms": 3199.9,
+    "mean_ms": 1237.12
+  },
+  "guardrail": {
+    "p50_ms": null,
+    "p95_ms": null,
+    "p99_ms": null,
+    "mean_ms": null
+  },
+  "decisions": {
+    "flag": 50
+  },
+  "p50_ms": 1081.0,
+  "p95_ms": 2291.91,
+  "p99_ms": 2799.09
+}
