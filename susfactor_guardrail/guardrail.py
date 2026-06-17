@@ -97,10 +97,6 @@ class SusFactorGuardrail(CustomGuardrail):
 
         super().__init__(**kwargs)
 
-    # ------------------------------------------------------------------
-    # Core hook — called by LiteLLM for pre_call / during_call / post_call
-    # ------------------------------------------------------------------
-
     async def apply_guardrail(  # type: ignore[override]
         self,
         inputs: dict[str, Any],
@@ -108,25 +104,7 @@ class SusFactorGuardrail(CustomGuardrail):
         input_type: Literal["request", "response"] = "request",
         logging_obj: Optional[Any] = None,
     ) -> dict[str, Any]:
-        """Score each text in ``inputs["texts"]`` and apply the configured action.
-
-        Empty or whitespace-only texts are skipped (no backend call).
-        If any text is suspicious and enforcement is ``"block"``, raises an exception.
-        For ``"flag"`` and ``"shadow"``, always returns ``inputs`` unchanged.
-
-        Args:
-            inputs: Dict with ``texts`` (list[str]), optional ``images``, optional ``tool_calls``.
-            request_data: LiteLLM request data dict (passed through unchanged).
-            input_type: ``"request"`` or ``"response"``.
-            logging_obj: Optional LiteLLM logging object.
-
-        Returns:
-            ``inputs`` unchanged (possibly annotated in ``request_data["metadata"]``).
-
-        Raises:
-            Exception: When enforcement is ``"block"`` and a suspicious text is detected
-                (or when ``fail_open=False`` and the backend is unavailable).
-        """
+        """Score texts and tool-call args, applying the configured enforcement action."""
         texts: list[str] = inputs.get("texts") or []
 
         for text in texts:
@@ -147,10 +125,6 @@ class SusFactorGuardrail(CustomGuardrail):
 
         return inputs
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
     async def _score_and_act(
         self,
         text: str,
@@ -160,7 +134,6 @@ class SusFactorGuardrail(CustomGuardrail):
         """Score one text, record observability data, and apply the action."""
         start = time.monotonic()
 
-        # --- Backend call ---
         try:
             result = await self._backend.score(text)
         except SusFactorUnavailable as exc:
@@ -187,18 +160,11 @@ class SusFactorGuardrail(CustomGuardrail):
 
         elapsed_s = time.monotonic() - start
         is_suspicious = result.score >= self._threshold
-
-        # Determine decision label for logging/metadata
-        if self._enforcement == "block" and is_suspicious:
-            decision = "block"
-        elif self._enforcement == "shadow":
-            decision = "shadow"
-        elif self._enforcement == "flag":
-            decision = "flag"
+        if self._enforcement == "block":
+            decision = "block" if is_suspicious else "allow"
         else:
-            decision = "allow"
+            decision = self._enforcement  # "flag" or "shadow"
 
-        # --- Structured INFO log ---
         logger.info(
             "susfactor decision=%s score=%.4f label=%s threshold=%.2f "
             "enforcement=%s input_type=%s latency_ms=%.1f backend=%s model=%s",
@@ -213,19 +179,12 @@ class SusFactorGuardrail(CustomGuardrail):
             result.model,
         )
 
-        # --- Always record metadata (safe + suspicious) ---
         self._record(
-            result=result,
-            request_data=request_data,
-            input_type=input_type,
-            decision=decision,
+            result=result, request_data=request_data, input_type=input_type, decision=decision
         )
-
-        # --- StandardLoggingGuardrailInformation ---
-        slg_status = "guardrail_intervened" if is_suspicious else "success"
         self._record_slg(
             request_data=request_data,
-            status=slg_status,
+            status="guardrail_intervened" if is_suspicious else "success",
             duration=elapsed_s,
             response={
                 "decision": decision,
@@ -237,11 +196,9 @@ class SusFactorGuardrail(CustomGuardrail):
             },
         )
 
-        # --- Apply action ---
         if self._enforcement in ("shadow", "flag"):
-            return  # never block
+            return
 
-        # enforcement == "block"
         if is_suspicious:
             raise GuardrailRaisedException(
                 message=(
@@ -253,26 +210,18 @@ class SusFactorGuardrail(CustomGuardrail):
 
     @staticmethod
     def _extract_tool_call_args(tool_call: Any) -> str:
-        """Extract the function.arguments string from a tool call object or dict.
-
-        Handles both ``ChatCompletionMessageToolCall`` (attribute access) and plain
-        ``dict`` representations. Returns an empty string if arguments cannot be found.
-        """
-        try:
-            # Attribute access path (ChatCompletionMessageToolCall / OpenAIObject)
-            function = getattr(tool_call, "function", None)
-            if function is not None:
-                args = getattr(function, "arguments", None)
-                if args is not None:
-                    return str(args)
-
-            # Dict path
-            if isinstance(tool_call, dict):
-                func = tool_call.get("function", {})
-                if isinstance(func, dict):
-                    return str(func.get("arguments", ""))
-        except Exception:  # noqa: BLE001 — never crash the guardrail on extraction
-            pass
+        """Return function.arguments from a tool call object or dict, or empty string."""
+        # Attribute path: ChatCompletionMessageToolCall / OpenAIObject
+        function = getattr(tool_call, "function", None)
+        if function is not None:
+            args = getattr(function, "arguments", None)
+            if args is not None:
+                return str(args)
+        # Dict path
+        if isinstance(tool_call, dict):
+            func = tool_call.get("function", {})
+            if isinstance(func, dict):
+                return str(func.get("arguments", ""))
         return ""
 
     def _record(

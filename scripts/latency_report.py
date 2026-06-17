@@ -425,9 +425,7 @@ async def _run_load(
     semaphore = asyncio.Semaphore(concurrency)
     results: list[RequestResult] = []
 
-    # Single shared client for all requests — enables connection pooling so TCP/TLS
-    # handshakes happen once per connection, not once per request. Without this,
-    # every request would add 10-100ms of handshake overhead, inflating measurements.
+    # Shared client so connections are pooled across requests.
     async with httpx.AsyncClient() as client:
 
         async def bounded(i: int, prompt: str) -> None:

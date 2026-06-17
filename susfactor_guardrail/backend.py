@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Optional, Protocol
 
 # Import at module level so unittest.mock.patch can resolve the name.
 # These are optional deps (torch/transformers); ImportError is surfaced as
@@ -32,46 +32,32 @@ except ImportError:  # pragma: no cover — torch/transformers not installed
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Result type
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class SusResult:
     """Result of a SusFactor scoring call.
 
     Mirrors the shape of both ``SusFactorResult`` (prompt-toolkit SDK) and
     the Heimdall ``/api/v1/sus`` response so backends are interchangeable.
+
+    Fields:
+        score: P(suspicious) ∈ [0, 1].
+        label: ``"suspicious"`` if ``score >= threshold`` else ``"safe"``.
+        model: Model identifier reported by the backend.
+        threshold: Decision threshold used to derive ``label``.
+        timing_ms: Inference time in milliseconds, if measured.
+        backend: Which backend produced this result (``"sdk"`` or ``"heimdall"``).
     """
 
     score: float
-    """P(suspicious) ∈ [0, 1]."""
-
     label: str
-    """``"suspicious"`` if ``score >= threshold`` else ``"safe"``."""
-
     model: str
-    """Model identifier reported by the backend."""
-
     threshold: float
-    """Decision threshold used to derive ``label``."""
-
     timing_ms: Optional[float]
-    """Inference time in milliseconds, if measured."""
-
     backend: str
-    """Which backend produced this result (``"sdk"`` or ``"heimdall"``)."""
 
     @property
     def is_suspicious(self) -> bool:
-        """Whether the text was classified as suspicious."""
         return self.label == "suspicious"
-
-
-# ---------------------------------------------------------------------------
-# Error type
-# ---------------------------------------------------------------------------
 
 
 class SusFactorUnavailable(Exception):
@@ -83,41 +69,17 @@ class SusFactorUnavailable(Exception):
     """
 
 
-# ---------------------------------------------------------------------------
-# Protocol
-# ---------------------------------------------------------------------------
-
-
-@runtime_checkable
 class SusFactorBackend(Protocol):
-    """One-method interface for SusFactor scoring backends."""
+    """Structural type for SusFactor scoring backends — implement ``score``."""
 
-    async def score(self, text: str) -> SusResult:
-        """Score a single text string.
-
-        Args:
-            text: The text to classify.
-
-        Returns:
-            A :class:`SusResult` with the suspicion probability and label.
-
-        Raises:
-            SusFactorUnavailable: If the backend cannot produce a score.
-        """
-        ...
-
-
-# ---------------------------------------------------------------------------
-# SDK backend
-# ---------------------------------------------------------------------------
+    async def score(self, text: str) -> SusResult: ...
 
 
 class SdkBackend:
     """In-process SusFactor backend using ``odin-prompt-toolkit[susfactor]``.
 
     Loads ``SusFactorClassifier`` once, lazily, on the first ``score()`` call.
-    Subsequent calls reuse the loaded classifier. An ``asyncio.Lock`` prevents
-    double-loading under concurrent proxy requests.
+    An ``asyncio.Lock`` prevents double-loading under concurrent proxy requests.
 
     Args:
         model_cache_dir: Override for the model cache directory. ``None`` uses
@@ -176,27 +138,14 @@ class SdkBackend:
             except SusFactorUnavailable:
                 raise
             except Exception as exc:
-                # Surface as SusFactorUnavailable regardless of the underlying error type
-                # (SusFactorError for missing model, any other Exception for load failures).
                 raise SusFactorUnavailable(str(exc)) from exc
 
     async def score(self, text: str) -> SusResult:
-        """Classify ``text`` using the in-process SusFactor classifier.
-
-        Args:
-            text: The text to classify.
-
-        Returns:
-            A :class:`SusResult`.
-
-        Raises:
-            SusFactorUnavailable: If the model is not cached or inference fails.
-        """
+        """Classify ``text``, raising ``SusFactorUnavailable`` on any failure."""
         await self._ensure_loaded()
 
         try:
             sdk_result = await self._classifier.classify(text)
-
             return SusResult(
                 score=sdk_result.score,
                 label=sdk_result.label,
@@ -205,7 +154,6 @@ class SdkBackend:
                 timing_ms=sdk_result.timing_ms,
                 backend="sdk",
             )
-
         except SusFactorUnavailable:
             raise
         except Exception as exc:
