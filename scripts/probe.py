@@ -12,6 +12,12 @@ Usage
 Environment
 -----------
     LITELLM_MASTER_KEY   proxy bearer token (default: sk-1234)
+
+Exit codes
+----------
+    0   Request completed and proxy returned 2xx
+    1   Proxy returned an error response (4xx/5xx — e.g. blocked by guardrail)
+    2   Could not reach the proxy (connection refused, timeout, or missing httpx)
 """
 
 from __future__ import annotations

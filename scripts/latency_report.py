@@ -94,8 +94,9 @@ def load_prompts(path: Path) -> list[PromptEntry]:
     raw = path.read_text(encoding="utf-8")
     prompts: list[PromptEntry] = []
 
+    skipped = 0
     if path.suffix.lower() == ".jsonl":
-        for line in raw.splitlines():
+        for lineno, line in enumerate(raw.splitlines(), 1):
             line = line.strip()
             if not line:
                 continue
@@ -103,15 +104,25 @@ def load_prompts(path: Path) -> list[PromptEntry]:
                 obj = json.loads(line)
                 text = obj.get("text", "").strip()
                 if not text:
+                    skipped += 1
                     continue
                 prompts.append(PromptEntry(text=text, label=obj.get("label") or None))
             except json.JSONDecodeError:
-                continue
+                print(
+                    f"  [warn] {path.name}:{lineno} — invalid JSON, skipping line",
+                    file=sys.stderr,
+                )
+                skipped += 1
     else:
         for line in raw.splitlines():
             text = line.strip()
             if text:
                 prompts.append(PromptEntry(text=text))
+
+    if skipped:
+        print(
+            f"  [warn] {skipped} line(s) skipped (invalid JSON or missing 'text')", file=sys.stderr
+        )
 
     if not prompts:
         raise ValueError(f"No prompts loaded from {path}. Check the file format.")
@@ -356,7 +367,17 @@ class LengthBucket(Enum):
 
 
 def _approx_tokens(text: str) -> int:
-    """Approximate token count via whitespace split (fast proxy)."""
+    """Approximate token count via whitespace split.
+
+    Uses word count as a fast proxy for subword token count. English prose
+    typically encodes at ~1.2-1.4 tokens/word, so word count underestimates
+    true token count by ~20-40%. This is intentional: the bucket boundaries
+    (50/200/400) are conservative, meaning a 50-word prompt may encode to
+    60-70 real tokens and land in MEDIUM rather than SHORT. For latency
+    bucketing — where we care about order-of-magnitude length differences,
+    not precise token counts — this is accurate enough and avoids loading the
+    full tokenizer just for bucketing.
+    """
     return len(text.split())
 
 
@@ -507,25 +528,18 @@ def compute_stats(results: list[RequestResult]) -> LatencyStats:
             decision_counts[r.decision] = decision_counts.get(r.decision, 0) + 1
 
     # Length bucket breakdown
-    by_bucket: dict[LengthBucket, BucketStats] = {}
-    bucketed = [r for r in successes if r.token_count is not None]
-    if bucketed:
-        groups: dict[LengthBucket, list[RequestResult]] = {}
-        for r in bucketed:
-            b = LengthBucket.for_tokens(r.token_count)  # type: ignore[arg-type]
-            groups.setdefault(b, []).append(r)
-        for bucket, group in groups.items():
-            by_bucket[bucket] = _bucket_stats(group)
+    bucket_groups: dict[LengthBucket, list[RequestResult]] = {}
+    for r in successes:
+        if r.token_count is not None:
+            bucket_groups.setdefault(LengthBucket.for_tokens(r.token_count), []).append(r)
+    by_bucket = {b: _bucket_stats(g) for b, g in bucket_groups.items()}
 
     # Label breakdown
-    by_label: dict[str, BucketStats] = {}
-    labeled = [r for r in successes if r.label is not None]
-    if labeled:
-        label_groups: dict[str, list[RequestResult]] = {}
-        for r in labeled:
-            label_groups.setdefault(r.label, []).append(r)  # type: ignore[index]
-        for lbl, group in label_groups.items():
-            by_label[lbl] = _bucket_stats(group)
+    label_groups: dict[str, list[RequestResult]] = {}
+    for r in successes:
+        if r.label is not None:
+            label_groups.setdefault(r.label, []).append(r)
+    by_label = {lbl: _bucket_stats(g) for lbl, g in label_groups.items()}
 
     return LatencyStats(
         count=len(results),
@@ -885,8 +899,15 @@ def main() -> None:
                 file=sys.stderr,
             )
 
+        cycled = args.requests > len(prompts)
+        prompt_desc = (
+            f"{len(prompts)} prompts (cycled {args.requests // len(prompts)}× to fill {args.requests} requests)"
+            if cycled
+            else f"{len(prompts)} prompts"
+        )
         print(
-            f"Sending {args.requests} requests (concurrency={args.concurrency}) to {args.url}",
+            f"Sending {args.requests} requests (concurrency={args.concurrency}) "
+            f"from {prompt_desc} to {args.url}",
             file=sys.stderr,
         )
         results = asyncio.run(
