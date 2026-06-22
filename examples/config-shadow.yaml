@@ -1,12 +1,20 @@
-# litellm-shield — shadow mode (latency and accuracy validation)
+# litellm-shield — shadow mode (monitor and log, zero client impact)
 #
-# All requests are allowed through. SusFactor scores every prompt but never
-# blocks or annotates responses. Use this to:
-#   - Measure P50/P95 latency impact under real traffic
-#   - Collect ground-truth labels for FPR/TPR analysis
-#   - Validate model accuracy before enabling enforcement
+# mode: during_call   — SusFactor runs IN PARALLEL with the LLM call.
+#                       The model call is already in-flight; scoring adds
+#                       near-zero latency from the client's perspective.
+#                       The prompt still reaches the upstream model.
 #
-# Check logs for lines matching: susfactor decision=shadow score=...
+# enforcement: shadow — Score every prompt and write to logs.
+#                       Never block, never annotate the response.
+#                       The client sees no sign the guardrail ran.
+#
+# Use this when you want to:
+#   - Measure real-world false positive rate before enabling enforcement
+#   - Collect latency data under production traffic
+#   - Validate model accuracy without affecting users
+#
+# Check logs for: susfactor decision=shadow score=...
 
 model_list:
   - model_name: gpt-4o-mini

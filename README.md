@@ -127,19 +127,38 @@ guardrails:
                                  # set false for per-request opt-in (multi-tenant)
 ```
 
-### Mode vs action
+### Mode × enforcement — choosing the right combination
 
-| `mode`          | When it runs                             | Can block? |
-|-----------------|------------------------------------------|------------|
-| `during_call`   | In parallel with the LLM API call        | Yes (pre-response) |
-| `pre_call`      | Before the LLM API call                  | Yes |
-| `post_call`     | After the LLM API call (assembled response) | Non-streaming only |
+`mode` controls **when** the check runs relative to the upstream model call.
+`enforcement` controls **what happens** when a suspicious prompt is detected.
+They are independent settings — combine them to match your deployment posture.
 
-| `enforcement` | Suspicious prompt | Safe prompt |
-|---------------|-------------------|-------------|
-| `flag`        | Allow + annotate  | Allow       |
-| `shadow`      | Allow + log only  | Allow       |
-| `block`       | Reject            | Allow       |
+#### mode
+
+| `mode`        | When it runs                                    | Does the prompt reach the model?                   |
+| ------------- | ----------------------------------------------- | -------------------------------------------------- |
+| `pre_call`    | Before the LLM call is dispatched               | **No** — blocked requests never leave your infra   |
+| `during_call` | In parallel with the LLM call (default)         | **Yes** — model call is already in-flight          |
+| `post_call`   | After the assembled response comes back         | Yes — used to scan model *output*, not input       |
+
+#### enforcement
+
+| `enforcement` | Suspicious prompt          | Safe prompt | Client sees                        |
+| ------------- | -------------------------- | ----------- | ---------------------------------- |
+| `shadow`      | Log only, never block      | Allow       | Nothing (no header, no change)     |
+| `flag`        | Allow + annotate           | Allow       | `X-SusFactor-Decision: flag;score=0.99` |
+| `block`       | Reject with 400            | Allow       | Guardrail violation error          |
+
+#### Recommended combinations
+
+| Goal                                           | `mode`        | `enforcement` | Config file            |
+| ---------------------------------------------- | ------------- | ------------- | ---------------------- |
+| Monitor silently, zero client impact           | `during_call` | `shadow`      | `config-shadow.yaml`   |
+| Surface decisions to callers, never block      | `during_call` | `flag`        | `config-flag.yaml`     |
+| **Hard block — prompt never reaches the model**| **`pre_call`**| **`block`**   | **`config-block.yaml`**|
+| Scan model output (audit only on streaming)    | `post_call`   | `flag`        | custom                 |
+
+> **`during_call` + `block`** is technically valid but means the model call is already in-flight when the block fires — the upstream model has received the prompt. Use `pre_call` + `block` when you need to guarantee the prompt never leaves your infrastructure.
 
 ### Observability
 

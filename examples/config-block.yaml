@@ -1,11 +1,24 @@
-# litellm-shield — block mode (hard enforcement)
+# litellm-shield — block mode (hard enforcement, prompt never reaches the model)
 #
-# Suspicious requests are REJECTED before reaching the LLM. The client
-# receives a 400-level error with a guardrail violation message.
+# mode: pre_call      — SusFactor runs BEFORE the LLM call is dispatched.
+#                       If the prompt is suspicious, the upstream model is
+#                       never contacted — the request is rejected immediately.
+#                       This guarantees jailbreak prompts never leave your
+#                       infrastructure, at the cost of ~16ms added latency
+#                       on the critical path (ONNX P50, fully serial).
 #
-# Recommended: validate FPR with flag/shadow mode first before enabling this.
-# Austrian National Bank / enterprise deployments: set fail_open: false to
-# also block when the model is unavailable (fail-closed posture).
+# enforcement: block  — Reject suspicious requests with a 400-level error.
+#                       The client receives a guardrail violation message.
+#                       Safe prompts pass through normally.
+#
+# Use this when you want to:
+#   - Guarantee jailbreak/injection prompts never reach the upstream model
+#   - Meet compliance requirements that prohibit forwarding malicious content
+#   - Provide hard SLA guarantees to downstream systems
+#
+# Recommended: run shadow → flag mode first to validate FPR before blocking.
+# Enterprise fail-closed: set fail_open: false to block when the model is
+# unavailable (requests blocked rather than allowed through on error).
 
 model_list:
   - model_name: gpt-4o-mini
