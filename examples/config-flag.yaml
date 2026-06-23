@@ -1,8 +1,20 @@
-# litellm-shield — flag mode (recommended for initial POC deployments)
+# litellm-shield — flag mode (monitor, log, and surface to caller)
 #
-# Suspicious requests are ALLOWED through but annotated in logs and tagged
-# with an X-SusFactor-Decision response header. Use this to measure real-world
-# false positive rate before switching to block mode.
+# mode: during_call   — SusFactor runs IN PARALLEL with the LLM call.
+#                       The model call is already in-flight; scoring adds
+#                       near-zero latency from the client's perspective.
+#                       The prompt still reaches the upstream model.
+#
+# enforcement: flag   — Score every prompt. On suspicious: allow through
+#                       but annotate the response with the decision so the
+#                       caller can act on it. The client receives:
+#                         X-SusFactor-Decision: flag;score=0.9979
+#                       Suspicious prompts are logged for review.
+#
+# Use this when you want to:
+#   - Surface guardrail decisions to callers without blocking them
+#   - Validate FPR/TPR against real traffic before enabling block mode
+#   - Build client-side logic that reacts to the decision header
 #
 # Start: docker compose up
 # Or:    litellm --config examples/config-flag.yaml
