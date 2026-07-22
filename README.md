@@ -108,6 +108,42 @@ In `block` mode (`config-block.yaml`): probe shows a red block decision; the pro
 
 **Multi-tenant / per-request opt-in:** Set `default_on: false` in the config to require callers to explicitly pass `"guardrails": ["susfactor"]` in the request body. Use this when only some clients or routes should be scanned — for example, a shared proxy where internal tooling and external users share the same endpoint.
 
+### 4. Smoke-test the hosted backend
+
+`scripts/probe.py` above talks to a running litellm-shield proxy. `scripts/smoke_test_hosted.py` is different: it calls `HostedBackend` directly, in-process — no proxy, no `OPENROUTER_API_KEY` needed. It exercises the two live integration points the unit test suite mocks out: minting a JWT from the 0DIN Portal and scoring a prompt against the hosted SusFactor API.
+
+Set a real 0DIN Portal API token first:
+
+```bash
+export ODIN_ACCESS_TOKEN=odin_...   # or ODIN_API_TOKEN as a fallback
+```
+
+There is no dry-run mode — with no `--portal-url`/`--susfactor-url` override, this hits real production endpoints (`https://0din.ai` and `https://defense.0din.ai`).
+
+```bash
+# Safe prompt (default: "What is 2 + 2?")
+uv run python scripts/smoke_test_hosted.py
+
+# Score a safe and a suspicious prompt in the same run, side by side
+uv run python scripts/smoke_test_hosted.py --jailbreak
+
+# Machine-readable output
+uv run python scripts/smoke_test_hosted.py --jailbreak --json
+```
+
+Key flags (`--help` for the rest):
+
+| Flag | Purpose |
+| ---- | ------- |
+| `prompt` (positional) | Prompt text to score (default: `"What is 2 + 2?"`) |
+| `--jailbreak` | Also score a built-in jailbreak example alongside the main prompt |
+| `--access-token` | Overrides `ODIN_ACCESS_TOKEN`/`ODIN_API_TOKEN` |
+| `--portal-url` / `--susfactor-url` | Point at a non-prod Portal/SusFactor deployment |
+| `--threshold` | Score ≥ threshold is flagged suspicious (default: `0.5`) |
+| `--json` | Emit machine-readable JSON instead of formatted text |
+
+Exit codes: `0` = all prompts scored successfully (label may be `"safe"` or `"suspicious"` — that reflects the classifier's decision, not a script error), `1` = `SusFactorUnavailable` (JWT mint or scoring request failed), `2` = usage error (no access token resolved, or bad CLI arguments).
+
 ---
 
 ## Configuration reference
@@ -129,6 +165,7 @@ guardrails:
       portal_url: null           # hosted only — default https://0din.ai, or ODIN_PORTAL_URL
       susfactor_url: null        # hosted only — default https://defense.0din.ai, or ODIN_SUSFACTOR_URL
       access_token: os.environ/ODIN_ACCESS_TOKEN  # hosted only — required for backend: "hosted"
+                                 # smoke-test this round trip with scripts/smoke_test_hosted.py
       default_on: true           # apply to every request automatically; no "guardrails" key needed
                                  # set false for per-request opt-in (multi-tenant)
 ```
@@ -230,6 +267,7 @@ LiteLLM Proxy
           ├── SdkBackend                            ← sdk (in-process, torch)
           └── HostedBackend                         ← hosted (HTTP, sends prompts to 0DIN)
                 POST {susfactor_url}/api/v1/sus     ← JWT minted from {portal_url}, refreshed in the background
+                                                       (smoke-tested directly by scripts/smoke_test_hosted.py)
 ```
 
 The `SusFactorBackend` protocol allows backends to be swapped via the `backend:` config key. `sdk` uses the torch path (slower, no separate ONNX artifact needed); `sdk-onnx` uses ONNX Runtime (~35× faster on CPU); `hosted` sends prompts to 0DIN's hosted API instead of running the model locally — no model provisioning needed, but prompts leave your infrastructure over HTTPS.
