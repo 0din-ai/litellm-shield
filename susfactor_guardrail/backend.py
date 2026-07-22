@@ -253,7 +253,7 @@ class OnnxSdkBackend:
 
 # Response bodies are logged/embedded in exceptions truncated to this length —
 # long enough for debugging, short enough to avoid dumping huge error pages.
-_RESPONSE_BODY_TRUNCATE = 200
+_RESPONSE_BODY_TRUNCATE = 500
 
 # Initial and max backoff for background JWT refresh retries after a failure.
 _REFRESH_BACKOFF_INITIAL_S = 5.0
@@ -332,20 +332,25 @@ class HostedBackend:
         return token, expires_in
 
     async def _ensure_jwt(self) -> None:
-        """Mint the JWT exactly once, even under concurrent calls, then start refresh."""
-        if self._jwt is not None:
+        """Mint the JWT if missing or expired, even under concurrent calls; (re)start refresh."""
+        if self._jwt is not None and time.monotonic() < self._jwt_expires_at:
             return
 
         async with self._lock:
             # Re-check inside the lock in case another task minted while we waited.
-            if self._jwt is not None:
+            if self._jwt is not None and time.monotonic() < self._jwt_expires_at:
                 return
 
             token, expires_in = await self._mint_jwt()
             self._jwt = token
             self._jwt_expires_at = time.monotonic() + expires_in
             logger.info("susfactor.hosted: JWT minted (expires_in=%.0fs)", expires_in)
-            self._refresh_task = asyncio.ensure_future(self._refresh_loop())
+
+            # Only spawn a new background refresh loop if one isn't already running
+            # (avoids a duplicate loop when this inline mint happens because the
+            # existing loop is stuck in its own retry/backoff cycle).
+            if self._refresh_task is None or self._refresh_task.done():
+                self._refresh_task = asyncio.ensure_future(self._refresh_loop())
 
     async def _refresh_loop(self) -> None:
         """Re-mint the JWT out-of-band before it expires, retrying with backoff on failure."""
@@ -372,11 +377,6 @@ class HostedBackend:
     async def score(self, text: str) -> SusResult:
         """Score ``text`` via the hosted API, raising ``SusFactorUnavailable`` on any failure."""
         await self._ensure_jwt()
-
-        if time.monotonic() >= self._jwt_expires_at:
-            raise SusFactorUnavailable(
-                "susfactor.hosted: JWT expired with no successful background refresh behind it"
-            )
 
         try:
             resp = await self._client.post(

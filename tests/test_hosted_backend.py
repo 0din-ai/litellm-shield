@@ -229,6 +229,71 @@ async def test_hosted_backend_refresh_failure_keeps_old_token_and_retries(
 
 
 # ---------------------------------------------------------------------------
+# Inline mint-on-expiry fallback — background refresh loop stalled/dead
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hosted_backend_score_inline_mints_when_jwt_expired_and_refresh_stalled() -> None:
+    backend = _make_backend()
+    # Simulate a live token having gone stale with no refresh loop behind it
+    # (e.g. the loop's task already finished/errored out).
+    backend._jwt = "stale-jwt"
+    backend._jwt_expires_at = time.monotonic() - 1
+    backend._refresh_task = None
+
+    backend._client.post = AsyncMock(  # type: ignore[method-assign]
+        side_effect=[_mint_ok("jwt-fresh"), _score_ok(score=0.9, label="suspicious")]
+    )
+
+    result = await backend.score("hi")
+
+    assert result.backend == "hosted"
+    assert backend._jwt == "jwt-fresh"
+
+
+@pytest.mark.asyncio
+async def test_hosted_backend_score_raises_when_jwt_expired_and_inline_mint_fails() -> None:
+    backend = _make_backend()
+    backend._jwt = "stale-jwt"
+    backend._jwt_expires_at = time.monotonic() - 1
+    backend._refresh_task = None
+
+    backend._client.post = AsyncMock(  # type: ignore[method-assign]
+        return_value=_response(503, text="portal unavailable")
+    )
+
+    with pytest.raises(SusFactorUnavailable):
+        await backend.score("hi")
+
+
+@pytest.mark.asyncio
+async def test_hosted_backend_inline_mint_does_not_spawn_second_refresh_task_when_one_alive() -> (
+    None
+):
+    backend = _make_backend()
+    backend._jwt = "stale-jwt"
+    backend._jwt_expires_at = time.monotonic() - 1
+
+    # A live (never-completing) stand-in for a refresh loop stuck in its own
+    # retry/backoff cycle — still running, just not fast enough.
+    stuck_task = asyncio.ensure_future(asyncio.sleep(1000))
+    backend._refresh_task = stuck_task
+
+    backend._client.post = AsyncMock(  # type: ignore[method-assign]
+        side_effect=[_mint_ok("jwt-fresh"), _score_ok()]
+    )
+
+    try:
+        await backend.score("hi")
+        assert backend._refresh_task is stuck_task
+    finally:
+        stuck_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await stuck_task
+
+
+# ---------------------------------------------------------------------------
 # Error mapping → SusFactorUnavailable
 # ---------------------------------------------------------------------------
 
