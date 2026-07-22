@@ -7,7 +7,7 @@ on:
 jobs:
   review:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
+    if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
     permissions:
       id-token: write
       contents: read
