@@ -5,18 +5,25 @@ Defines the ``SusFactorBackend`` protocol and concrete implementations:
 - ``SdkBackend``: in-process torch inference via ``odin-prompt-toolkit[susfactor]``.
 - ``OnnxSdkBackend``: in-process ONNX Runtime inference via ``odin-prompt-toolkit[onnx]``.
   Faster on CPU (~3-5× vs torch); no torch dependency at inference time.
+- ``HostedBackend``: HTTP calls to 0DIN's hosted SusFactor API. Prompts leave
+  the local process over HTTPS — use this when self-hosting the model isn't
+  desired. Mints short-lived JWTs from the 0DIN Portal and refreshes them
+  out-of-band in the background so ``score()`` never blocks on a mint.
 
 - ``SusFactorUnavailable``: raised when the backend cannot produce a score
-  (model missing, load failure, inference error). Callers use ``fail_open``
-  to decide whether to allow or block on this error.
+  (model missing, load failure, inference error, network error). Callers use
+  ``fail_open`` to decide whether to allow or block on this error.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Optional, Protocol
+
+import httpx
 
 # Import at module level so unittest.mock.patch can resolve the name.
 # Optional deps; ImportError is surfaced as SusFactorUnavailable at runtime.
@@ -53,7 +60,7 @@ class SusResult:
         model: Model identifier reported by the backend.
         threshold: Decision threshold used to derive ``label``.
         timing_ms: Inference time in milliseconds, if measured.
-        backend: Which backend produced this result (``"sdk"``, ``"sdk-onnx"``, or ``"heimdall"``).
+        backend: Which backend produced this result (``"sdk"``, ``"sdk-onnx"``, or ``"hosted"``).
     """
 
     score: float
@@ -242,3 +249,162 @@ class OnnxSdkBackend:
             raise
         except Exception as exc:
             raise SusFactorUnavailable(str(exc)) from exc
+
+
+# Response bodies are logged/embedded in exceptions truncated to this length —
+# long enough for debugging, short enough to avoid dumping huge error pages.
+_RESPONSE_BODY_TRUNCATE = 200
+
+# Initial and max backoff for background JWT refresh retries after a failure.
+_REFRESH_BACKOFF_INITIAL_S = 5.0
+_REFRESH_BACKOFF_MAX_S = 60.0
+
+
+class HostedBackend:
+    """Hosted SusFactor backend — HTTP calls to 0DIN's hosted API.
+
+    Two-step flow: mint a short-lived JWT from the 0DIN Portal using a
+    long-lived access token, then call the hosted SusFactor scoring endpoint
+    with the JWT as a Bearer token. The JWT is refreshed out-of-band by a
+    background task so steady-state ``score()`` calls never await a mint —
+    they read the already-fresh token.
+
+    Args:
+        portal_url: Base URL of the 0DIN Portal (mints JWTs).
+        susfactor_url: Base URL of the hosted SusFactor scoring API.
+        access_token: 0DIN Portal API access token (long-lived).
+        threshold: Decision threshold, kept for API parity with the other
+            backends (the hosted API reports its own threshold per response).
+        refresh_buffer_s: Seconds before expiry to trigger the background
+            refresh — e.g. with the default 900s token lifetime and a 120s
+            buffer, refresh fires at the 780s mark.
+    """
+
+    def __init__(
+        self,
+        portal_url: str,
+        susfactor_url: str,
+        access_token: str,
+        threshold: float,
+        refresh_buffer_s: int = 120,
+    ) -> None:
+        self._portal_url = portal_url.rstrip("/")
+        self._susfactor_url = susfactor_url.rstrip("/")
+        self._access_token = access_token
+        self._threshold = threshold
+        self._refresh_buffer_s = refresh_buffer_s
+
+        self._client = httpx.AsyncClient()
+        self._jwt: Optional[str] = None
+        self._jwt_expires_at: float = 0.0
+        self._lock: asyncio.Lock = asyncio.Lock()
+        self._refresh_task: Optional[asyncio.Task[None]] = None
+        self._refresh_backoff_s: float = _REFRESH_BACKOFF_INITIAL_S
+
+    async def _mint_jwt(self) -> tuple[str, float]:
+        """POST to the Portal's ``/api/v1/access_tokens``, return ``(jwt, expires_in)``."""
+        try:
+            resp = await self._client.post(
+                f"{self._portal_url}/api/v1/access_tokens",
+                headers={"Authorization": self._access_token},
+            )
+        except httpx.HTTPError as exc:
+            raise SusFactorUnavailable(
+                f"susfactor.hosted: JWT mint request to Portal failed: {exc}"
+            ) from exc
+
+        if resp.status_code != 200:
+            raise SusFactorUnavailable(
+                f"susfactor.hosted: JWT mint failed with status {resp.status_code}: "
+                f"{resp.text[:_RESPONSE_BODY_TRUNCATE]}"
+            )
+
+        try:
+            data = resp.json()
+            token = data["token"]
+            expires_in = data["expires_in"]
+        except (ValueError, KeyError, TypeError) as exc:
+            raise SusFactorUnavailable(
+                f"susfactor.hosted: unexpected JWT mint response shape: "
+                f"{resp.text[:_RESPONSE_BODY_TRUNCATE]}"
+            ) from exc
+
+        return token, expires_in
+
+    async def _ensure_jwt(self) -> None:
+        """Mint the JWT exactly once, even under concurrent calls, then start refresh."""
+        if self._jwt is not None:
+            return
+
+        async with self._lock:
+            # Re-check inside the lock in case another task minted while we waited.
+            if self._jwt is not None:
+                return
+
+            token, expires_in = await self._mint_jwt()
+            self._jwt = token
+            self._jwt_expires_at = time.monotonic() + expires_in
+            logger.info("susfactor.hosted: JWT minted (expires_in=%.0fs)", expires_in)
+            self._refresh_task = asyncio.ensure_future(self._refresh_loop())
+
+    async def _refresh_loop(self) -> None:
+        """Re-mint the JWT out-of-band before it expires, retrying with backoff on failure."""
+        while True:
+            delay = max(self._jwt_expires_at - time.monotonic() - self._refresh_buffer_s, 0)
+            await asyncio.sleep(delay)
+
+            try:
+                token, expires_in = await self._mint_jwt()
+                self._jwt = token
+                self._jwt_expires_at = time.monotonic() + expires_in
+                self._refresh_backoff_s = _REFRESH_BACKOFF_INITIAL_S
+                logger.info("susfactor.hosted: JWT refreshed (expires_in=%.0fs)", expires_in)
+            except Exception as exc:
+                logger.warning(
+                    "susfactor.hosted: background JWT refresh failed, "
+                    "keeping current token, retrying in %.0fs: %s",
+                    self._refresh_backoff_s,
+                    exc,
+                )
+                await asyncio.sleep(self._refresh_backoff_s)
+                self._refresh_backoff_s = min(self._refresh_backoff_s * 2, _REFRESH_BACKOFF_MAX_S)
+
+    async def score(self, text: str) -> SusResult:
+        """Score ``text`` via the hosted API, raising ``SusFactorUnavailable`` on any failure."""
+        await self._ensure_jwt()
+
+        if time.monotonic() >= self._jwt_expires_at:
+            raise SusFactorUnavailable(
+                "susfactor.hosted: JWT expired with no successful background refresh behind it"
+            )
+
+        try:
+            resp = await self._client.post(
+                f"{self._susfactor_url}/api/v1/sus",
+                headers={"Authorization": f"Bearer {self._jwt}"},
+                json={"prompt": text},
+            )
+        except httpx.HTTPError as exc:
+            raise SusFactorUnavailable(f"susfactor.hosted: scoring request failed: {exc}") from exc
+
+        if resp.status_code != 200:
+            raise SusFactorUnavailable(
+                f"susfactor.hosted: scoring failed with status {resp.status_code}: "
+                f"{resp.text[:_RESPONSE_BODY_TRUNCATE]}"
+            )
+
+        try:
+            data = resp.json()
+            return SusResult(
+                score=data["score"],
+                label=data["label"],
+                model=data["model"],
+                threshold=data["threshold"],
+                timing_ms=data.get("timing_ms"),
+                backend="hosted",
+            )
+        except (ValueError, KeyError, TypeError) as exc:
+            raise SusFactorUnavailable(
+                f"susfactor.hosted: unexpected scoring response shape: "
+                f"{resp.text[:_RESPONSE_BODY_TRUNCATE]}"
+            ) from exc

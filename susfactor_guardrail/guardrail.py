@@ -19,10 +19,15 @@ Configuration via ``config.yaml`` ``litellm_params``::
           enforcement: "flag"
           threshold: 0.5
           fail_open: true
-          backend: "sdk"
+          backend: "sdk"             # sdk | sdk-onnx | hosted
           model_cache_dir: os.environ/SIGNATURE_SDK_MODEL_CACHE
           device: null
           scan_output: false
+          # hosted-backend-only settings (ignored unless backend: "hosted",
+          # or auto-selected when an access token is present and backend is unset):
+          portal_url: null           # default https://0din.ai, or ODIN_PORTAL_URL
+          susfactor_url: null        # default https://defense.0din.ai, or ODIN_SUSFACTOR_URL
+          access_token: os.environ/ODIN_ACCESS_TOKEN
 """
 
 from __future__ import annotations
@@ -36,12 +41,23 @@ from litellm.exceptions import GuardrailRaisedException
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.proxy._types import UserAPIKeyAuth
 
-from susfactor_guardrail.backend import OnnxSdkBackend, SdkBackend, SusFactorUnavailable
+from susfactor_guardrail.backend import (
+    HostedBackend,
+    OnnxSdkBackend,
+    SdkBackend,
+    SusFactorUnavailable,
+)
 
 logger = logging.getLogger(__name__)
 
 # Valid action values
 ACTIONS = frozenset({"block", "flag", "shadow"})
+
+# Valid backend values
+BACKENDS = frozenset({"sdk", "sdk-onnx", "hosted"})
+
+_DEFAULT_PORTAL_URL = "https://0din.ai"
+_DEFAULT_SUSFACTOR_URL = "https://defense.0din.ai"
 
 
 class SusFactorGuardrail(CustomGuardrail):
@@ -54,12 +70,27 @@ class SusFactorGuardrail(CustomGuardrail):
         threshold: Decision threshold. Score >= threshold ⇒ suspicious.
         fail_open: If ``True`` (default), allow the request when the backend is
             unavailable. If ``False``, block on unavailability.
-        backend: Backend implementation to use. Currently only ``"sdk"`` is
-            supported (in-process ``odin-prompt-toolkit``).
+        backend: Backend implementation to use — ``"sdk"`` (in-process torch),
+            ``"sdk-onnx"`` (in-process ONNX Runtime), or ``"hosted"`` (HTTP
+            calls to 0DIN's hosted SusFactor API; prompts leave the process
+            over HTTPS). ``None`` (default) auto-selects: ``"hosted"`` if an
+            access token is resolved (see ``access_token``), else ``"sdk"``.
+            An explicit value is always honored as-is.
         model_cache_dir: Override for the model cache directory. ``None`` uses
             the SDK default or the ``SIGNATURE_SDK_MODEL_CACHE`` env var.
+            Only used by ``"sdk"``/``"sdk-onnx"``.
         device: Torch device (``"cuda"``, ``"mps"``, ``"cpu"``). ``None`` auto-detects.
+            Only used by ``"sdk"``/``"sdk-onnx"``.
         scan_output: If ``True``, also score model outputs via ``post_call``.
+        portal_url: Base URL of the 0DIN Portal, used by the ``"hosted"``
+            backend to mint JWTs. ``None`` uses ``ODIN_PORTAL_URL`` or
+            ``"https://0din.ai"``.
+        susfactor_url: Base URL of the hosted SusFactor scoring API. ``None``
+            uses ``ODIN_SUSFACTOR_URL`` or ``"https://defense.0din.ai"``.
+        access_token: 0DIN Portal API access token. ``None`` falls back to
+            ``ODIN_ACCESS_TOKEN``, then ``ODIN_API_TOKEN``. Presence of a
+            resolved token drives backend auto-selection when ``backend`` is
+            unset; required (directly or via env) when ``backend="hosted"``.
         **kwargs: Forwarded to :class:`~litellm.integrations.custom_guardrail.CustomGuardrail`.
     """
 
@@ -68,10 +99,13 @@ class SusFactorGuardrail(CustomGuardrail):
         enforcement: str = "flag",
         threshold: float = 0.5,
         fail_open: bool = True,
-        backend: str = "sdk",
+        backend: Optional[str] = None,
         model_cache_dir: Optional[str] = None,
         device: Optional[str] = None,
         scan_output: bool = False,
+        portal_url: Optional[str] = None,
+        susfactor_url: Optional[str] = None,
+        access_token: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         if enforcement not in ACTIONS:
@@ -85,22 +119,76 @@ class SusFactorGuardrail(CustomGuardrail):
         # Resolve model_cache_dir from env if not explicitly passed
         resolved_cache_dir = model_cache_dir or os.environ.get("SIGNATURE_SDK_MODEL_CACHE")
 
-        if backend == "sdk":
-            self._backend: SdkBackend | OnnxSdkBackend = SdkBackend(
+        resolved_portal_url = portal_url or os.environ.get("ODIN_PORTAL_URL") or _DEFAULT_PORTAL_URL
+        resolved_susfactor_url = (
+            susfactor_url or os.environ.get("ODIN_SUSFACTOR_URL") or _DEFAULT_SUSFACTOR_URL
+        )
+        resolved_token = (
+            access_token or os.environ.get("ODIN_ACCESS_TOKEN") or os.environ.get("ODIN_API_TOKEN")
+        )
+
+        resolved_backend = self._resolve_backend(
+            backend=backend, token=resolved_token, susfactor_url=resolved_susfactor_url
+        )
+        self._backend_kind = resolved_backend
+
+        if resolved_backend == "sdk":
+            self._backend: SdkBackend | OnnxSdkBackend | HostedBackend = SdkBackend(
                 model_cache_dir=resolved_cache_dir,
                 threshold=threshold,
                 device=device,
             )
-        elif backend == "sdk-onnx":
+        elif resolved_backend == "sdk-onnx":
             self._backend = OnnxSdkBackend(
                 model_cache_dir=resolved_cache_dir,
                 threshold=threshold,
                 device=device,
             )
         else:
-            raise ValueError(f"Unknown backend {backend!r}. Supported: 'sdk', 'sdk-onnx'")
+            assert resolved_token is not None  # enforced by _resolve_backend
+            self._backend = HostedBackend(
+                portal_url=resolved_portal_url,
+                susfactor_url=resolved_susfactor_url,
+                access_token=resolved_token,
+                threshold=threshold,
+            )
 
         super().__init__(**kwargs)
+
+    @staticmethod
+    def _resolve_backend(backend: Optional[str], token: Optional[str], susfactor_url: str) -> str:
+        """Apply the backend/token precedence rule from 0DIN-1847.
+
+        See the class docstring's ``backend`` entry for the full decision table.
+        """
+        if backend is None:
+            if token:
+                logger.warning(
+                    "susfactor: ODIN access token detected — auto-selecting hosted "
+                    "backend (prompts will be sent to %s). Set backend explicitly to "
+                    "'sdk' or 'sdk-onnx' to keep prompts in-process.",
+                    susfactor_url,
+                )
+                return "hosted"
+            return "sdk"
+
+        if backend not in BACKENDS:
+            raise ValueError(f"Unknown backend {backend!r}. Supported: {sorted(BACKENDS)}")
+
+        if backend in ("sdk", "sdk-onnx") and token:
+            logger.info(
+                "susfactor: access token present but backend explicitly set to %r — "
+                "ignoring token, prompts stay in-process.",
+                backend,
+            )
+
+        if backend == "hosted" and not token:
+            raise ValueError(
+                "backend='hosted' requires an access token — pass access_token= or set "
+                "ODIN_ACCESS_TOKEN (or ODIN_API_TOKEN)."
+            )
+
+        return backend
 
     async def apply_guardrail(  # type: ignore[override]
         self,

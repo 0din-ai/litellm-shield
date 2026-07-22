@@ -1,0 +1,68 @@
+# litellm-shield — hosted backend (no local model, prompts sent to 0DIN)
+#
+# backend: hosted     — Calls 0DIN's hosted SusFactor API instead of running
+#                       the classifier in-process. No model provisioning
+#                       needed (skip scripts/provision_model.py entirely).
+#                       Prompts leave your infrastructure over HTTPS.
+#
+# mode: during_call   — SusFactor runs IN PARALLEL with the LLM call.
+#                       The model call is already in-flight; scoring adds
+#                       near-zero latency from the client's perspective.
+#                       The prompt still reaches the upstream model.
+#
+# enforcement: flag   — Score every prompt. On suspicious: allow through
+#                       but annotate the response with the decision so the
+#                       caller can act on it. The client receives:
+#                         X-SusFactor-Decision: flag;score=0.9979
+#                       Suspicious prompts are logged for review.
+#
+# Use this when you want to:
+#   - Skip model provisioning entirely (no HuggingFace access needed)
+#   - Run on hosts without enough CPU/RAM for local inference
+#   - Centralize scoring against 0DIN's hosted SusFactor deployment
+#
+# Requires a 0DIN Portal access token — set ODIN_ACCESS_TOKEN before starting.
+#
+# Start: docker compose up
+# Or:    litellm --config examples/config-hosted.yaml
+
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openrouter/openai/gpt-4o-mini
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: gpt-4o
+    litellm_params:
+      model: openrouter/openai/gpt-4o
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: claude-sonnet
+    litellm_params:
+      model: openrouter/anthropic/claude-sonnet-4-5
+      api_key: os.environ/OPENROUTER_API_KEY
+
+guardrails:
+  - guardrail_name: "susfactor"
+    litellm_params:
+      guardrail: susfactor_guardrail.SusFactorGuardrail
+      mode: "during_call"     # runs in parallel with the LLM call — hides latency
+      enforcement: "flag"     # allow through, annotate decision
+      threshold: 0.5
+      fail_open: true         # if the hosted API is unavailable, allow the request
+      backend: "hosted"       # HTTP calls to 0DIN's hosted SusFactor API
+      access_token: os.environ/ODIN_ACCESS_TOKEN
+      # portal_url / susfactor_url default to https://0din.ai and
+      # https://defense.0din.ai — override with ODIN_PORTAL_URL /
+      # ODIN_SUSFACTOR_URL if you need to point at a non-prod environment.
+      scan_output: false      # set true to also score model responses
+      # default_on: true applies the guardrail to every request automatically.
+      # Without it, callers must include "guardrails": ["susfactor"] in the request body.
+      # Set to false (or omit) when you want per-request opt-in, e.g. multi-tenant
+      # deployments where only some clients should be scanned.
+      default_on: true
+
+litellm_settings:
+  # Master key for LiteLLM proxy authentication (clients use this as their Bearer token).
+  # The guardrail runs on all requests automatically via default_on: true above.
+  master_key: os.environ/LITELLM_MASTER_KEY
