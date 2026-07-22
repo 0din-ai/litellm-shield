@@ -26,6 +26,7 @@ classifiers = [
 dependencies = [
     "litellm[proxy]>=1.0.0",
     "odin-prompt-toolkit[susfactor,onnx]",
+    "httpx>=0.27.0",
 ]
 
 [tool.uv.sources]

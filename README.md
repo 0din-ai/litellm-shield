@@ -2,7 +2,7 @@
 
 SusFactor jailbreak and prompt-injection guardrail for [LiteLLM](https://docs.litellm.ai/).
 
-Runs the **0DIN SusFactor classifier** in-process — an e5-large encoder + MLP head trained on hard negatives — to detect jailbreak and prompt-injection attempts on LLM inputs, outputs, and tool-call arguments. No network hop; fully offline once the model is provisioned.
+Runs the **0DIN SusFactor classifier** — an e5-large encoder + MLP head trained on hard negatives — to detect jailbreak and prompt-injection attempts on LLM inputs, outputs, and tool-call arguments. With the `sdk`/`sdk-onnx` backends this runs in-process: no network hop, fully offline once the model is provisioned. A `hosted` backend is also available for when self-hosting the model isn't desired — it sends prompts to 0DIN's hosted SusFactor API over HTTPS instead.
 
 > **Status:** Early development (0DIN-1587). Internal only.
 
@@ -121,10 +121,14 @@ guardrails:
       enforcement: "flag"            # flag | shadow | block
       threshold: 0.5             # score >= threshold → suspicious
       fail_open: true            # on model unavailable: true=allow, false=block
-      backend: "sdk"             # sdk (in-process); heimdall (future HTTP backend)
-      model_cache_dir: null      # override cache dir (or set SIGNATURE_SDK_MODEL_CACHE)
-      device: null               # null=auto-detect (cuda/mps/cpu)
+      backend: "sdk"             # sdk | sdk-onnx (in-process) | hosted (HTTP, sends prompts to 0DIN)
+                                 # null auto-selects "hosted" if an access token is present, else "sdk"
+      model_cache_dir: null      # sdk/sdk-onnx only — override cache dir (or set SIGNATURE_SDK_MODEL_CACHE)
+      device: null               # sdk/sdk-onnx only — null=auto-detect (cuda/mps/cpu)
       scan_output: false         # also score model responses via post_call
+      portal_url: null           # hosted only — default https://0din.ai, or ODIN_PORTAL_URL
+      susfactor_url: null        # hosted only — default https://defense.0din.ai, or ODIN_SUSFACTOR_URL
+      access_token: os.environ/ODIN_ACCESS_TOKEN  # hosted only — required for backend: "hosted"
       default_on: true           # apply to every request automatically; no "guardrails" key needed
                                  # set false for per-request opt-in (multi-tenant)
 ```
@@ -219,13 +223,16 @@ For enterprise / fail-closed deployments (e.g. Austrian National Bank), set `fai
 LiteLLM Proxy
   └── SusFactorGuardrail(CustomGuardrail)
         apply_guardrail(texts + tool_call_args)
-          └── OnnxSdkBackend                        ← default (sdk-onnx)
-                SusFactorOnnxClassifier.classify()  ← in-process ONNX Runtime
-                  e5-large encoder + MLP head (baked into one ONNX graph)
-                    → P(suspicious) in ~16ms P50 on CPU
+          ├── OnnxSdkBackend                        ← default (sdk-onnx)
+          │     SusFactorOnnxClassifier.classify()  ← in-process ONNX Runtime
+          │       e5-large encoder + MLP head (baked into one ONNX graph)
+          │         → P(suspicious) in ~16ms P50 on CPU
+          ├── SdkBackend                            ← sdk (in-process, torch)
+          └── HostedBackend                         ← hosted (HTTP, sends prompts to 0DIN)
+                POST {susfactor_url}/api/v1/sus     ← JWT minted from {portal_url}, refreshed in the background
 ```
 
-The `SusFactorBackend` protocol allows backends to be swapped via the `backend:` config key. `sdk` uses the torch path (slower, no separate ONNX artifact needed); `sdk-onnx` uses ONNX Runtime (~35× faster on CPU).
+The `SusFactorBackend` protocol allows backends to be swapped via the `backend:` config key. `sdk` uses the torch path (slower, no separate ONNX artifact needed); `sdk-onnx` uses ONNX Runtime (~35× faster on CPU); `hosted` sends prompts to 0DIN's hosted API instead of running the model locally — no model provisioning needed, but prompts leave your infrastructure over HTTPS.
 
 ---
 
