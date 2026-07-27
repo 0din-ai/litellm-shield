@@ -198,6 +198,45 @@ async def test_standard_logging_guardrail_info_on_unavailable_fail_open() -> Non
     assert slg_list[-1].get("guardrail_status") == "guardrail_failed_to_respond"
 
 
+@pytest.mark.asyncio
+async def test_susfactor_metadata_recorded_on_unavailable_fail_open() -> None:
+    """0DIN-1874 regression: a timeout/unavailable scoring call must still land in
+    metadata["susfactor"] instead of vanishing — otherwise the decision (and the
+    X-SusFactor-Decision header derived from it) silently disappears for that request.
+    """
+    g = _guardrail(action="block", fail_open=True)
+    g._backend.score = AsyncMock(side_effect=SusFactorUnavailable("Timed out"))
+    request_data: dict[str, Any] = {}
+
+    await g.apply_guardrail(inputs=_inputs("test"), request_data=request_data, input_type="request")
+
+    records = request_data.get("metadata", {}).get("susfactor", [])
+    assert len(records) == 1
+    assert records[0]["decision"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_response_header_reflects_error_decision_on_unavailable_fail_open() -> None:
+    """0DIN-1874 regression: the error decision must surface in the response header too."""
+    from litellm.proxy._types import UserAPIKeyAuth
+
+    g = _guardrail(action="flag", fail_open=True)
+    g._backend.score = AsyncMock(side_effect=SusFactorUnavailable("Timed out"))
+    request_data: dict[str, Any] = {}
+
+    await g.apply_guardrail(inputs=_inputs("test"), request_data=request_data, input_type="request")
+
+    headers = await g.async_post_call_response_headers_hook(
+        data=request_data,
+        user_api_key_dict=UserAPIKeyAuth(),
+        response=MagicMock(),
+    )
+
+    assert headers is not None
+    header_value = next(v for k, v in headers.items() if k.lower() == "x-susfactor-decision")
+    assert header_value.startswith("error")
+
+
 # ---------------------------------------------------------------------------
 # P3-3: structured log emission (latency captured)
 # ---------------------------------------------------------------------------

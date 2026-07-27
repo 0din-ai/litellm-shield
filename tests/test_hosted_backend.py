@@ -79,6 +79,33 @@ def _make_backend(threshold: float = 0.5, refresh_buffer_s: int = 120) -> Hosted
 
 
 # ---------------------------------------------------------------------------
+# HTTP timeout — 0DIN-1874: must not rely on httpx's implicit 5s default
+# ---------------------------------------------------------------------------
+
+
+def test_hosted_backend_client_has_explicit_default_timeout() -> None:
+    backend = _make_backend()
+
+    # httpx.AsyncClient() with no timeout= silently gets an implicit 5s default
+    # (httpx.Timeout(timeout=5.0)) — indistinguishable from a deliberate choice.
+    # We want a timeout that was explicitly set by HostedBackend, not httpx's
+    # fallback, so assert it matches our documented default exactly.
+    assert backend._client.timeout == httpx.Timeout(HostedBackend._DEFAULT_TIMEOUT_S)
+
+
+def test_hosted_backend_accepts_custom_timeout() -> None:
+    backend = HostedBackend(
+        portal_url=PORTAL_URL,
+        susfactor_url=SUSFACTOR_URL,
+        access_token=ACCESS_TOKEN,
+        threshold=0.5,
+        timeout_s=2.5,
+    )
+
+    assert backend._client.timeout == httpx.Timeout(2.5)
+
+
+# ---------------------------------------------------------------------------
 # Happy path
 # ---------------------------------------------------------------------------
 

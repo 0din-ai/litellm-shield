@@ -28,6 +28,7 @@ Configuration via ``config.yaml`` ``litellm_params``::
           portal_url: null           # default https://0din.ai, or ODIN_PORTAL_URL
           susfactor_url: null        # default https://defense.0din.ai, or ODIN_SUSFACTOR_URL
           access_token: os.environ/ODIN_ACCESS_TOKEN
+          timeout_s: 10.0             # HTTP timeout for hosted scoring/JWT-mint requests
 """
 
 from __future__ import annotations
@@ -58,6 +59,10 @@ BACKENDS = frozenset({"sdk", "sdk-onnx", "hosted"})
 
 _DEFAULT_PORTAL_URL = "https://0din.ai"
 _DEFAULT_SUSFACTOR_URL = "https://defense.0din.ai"
+
+# Captured at import time (not read off HostedBackend at call time) so tests that
+# patch susfactor_guardrail.guardrail.HostedBackend don't turn this into a MagicMock.
+_DEFAULT_HOSTED_TIMEOUT_S = HostedBackend._DEFAULT_TIMEOUT_S
 
 
 class SusFactorGuardrail(CustomGuardrail):
@@ -91,6 +96,9 @@ class SusFactorGuardrail(CustomGuardrail):
             ``ODIN_ACCESS_TOKEN``, then ``ODIN_API_TOKEN``. Presence of a
             resolved token drives backend auto-selection when ``backend`` is
             unset; required (directly or via env) when ``backend="hosted"``.
+        timeout_s: HTTP timeout (seconds) for the hosted backend's JWT-mint
+            and scoring requests. Only used by ``"hosted"``. ``None`` uses
+            ``HostedBackend``'s documented default.
         **kwargs: Forwarded to :class:`~litellm.integrations.custom_guardrail.CustomGuardrail`.
     """
 
@@ -106,6 +114,7 @@ class SusFactorGuardrail(CustomGuardrail):
         portal_url: Optional[str] = None,
         susfactor_url: Optional[str] = None,
         access_token: Optional[str] = None,
+        timeout_s: Optional[float] = None,
         **kwargs: Any,
     ) -> None:
         if enforcement not in ACTIONS:
@@ -146,11 +155,13 @@ class SusFactorGuardrail(CustomGuardrail):
             )
         else:
             assert resolved_token is not None  # enforced by _resolve_backend
+            resolved_timeout_s = timeout_s if timeout_s is not None else _DEFAULT_HOSTED_TIMEOUT_S
             self._backend = HostedBackend(
                 portal_url=resolved_portal_url,
                 susfactor_url=resolved_susfactor_url,
                 access_token=resolved_token,
                 threshold=threshold,
+                timeout_s=resolved_timeout_s,
             )
 
         super().__init__(**kwargs)
@@ -238,6 +249,12 @@ class SusFactorGuardrail(CustomGuardrail):
                 elapsed_s * 1000,
                 exc,
             )
+            self._record(
+                result=None,
+                request_data=request_data,
+                input_type=input_type,
+                decision="error",
+            )
             self._record_slg(
                 request_data=request_data,
                 status="guardrail_failed_to_respond",
@@ -319,24 +336,30 @@ class SusFactorGuardrail(CustomGuardrail):
 
     def _record(
         self,
-        result: Any,
+        result: Optional[Any],
         request_data: dict[str, Any],
         input_type: Literal["request", "response"],
         decision: str = "allow",
     ) -> None:
-        """Write per-text decision metadata into request_data["metadata"]["susfactor"]."""
+        """Write per-text decision metadata into request_data["metadata"]["susfactor"].
+
+        ``result`` is ``None`` for the ``"error"`` decision (backend raised
+        ``SusFactorUnavailable`` — no score was produced) so the timeout/error
+        is still visible in the decision record instead of being silently
+        dropped (0DIN-1874).
+        """
         meta = request_data.setdefault("metadata", {})
         susfactor_records: list[dict[str, Any]] = meta.setdefault("susfactor", [])
         susfactor_records.append(
             {
-                "score": result.score,
-                "label": result.label,
-                "model": result.model,
+                "score": result.score if result is not None else None,
+                "label": result.label if result is not None else None,
+                "model": result.model if result is not None else None,
                 "threshold": self._threshold,
                 "enforcement": self._enforcement,
                 "input_type": input_type,
-                "timing_ms": result.timing_ms,
-                "backend": result.backend,
+                "timing_ms": result.timing_ms if result is not None else None,
+                "backend": result.backend if result is not None else self._backend_kind,
                 "decision": decision,
             }
         )

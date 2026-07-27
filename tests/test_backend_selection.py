@@ -175,3 +175,26 @@ def test_access_token_falls_back_to_odin_api_token_env(_mock_backends, monkeypat
     assert g._backend_kind == "hosted"
     call_kwargs = _mock_backends["hosted"].call_args.kwargs
     assert call_kwargs["access_token"] == "legacy-token"
+
+
+# ---------------------------------------------------------------------------
+# HTTP timeout — 0DIN-1874: configurable, threaded down to HostedBackend
+# ---------------------------------------------------------------------------
+
+
+def test_hosted_backend_gets_default_timeout(_mock_backends) -> None:
+    from susfactor_guardrail.backend import HostedBackend
+
+    g = _make_guardrail(backend="hosted", access_token="secret-token")
+
+    assert g._backend_kind == "hosted"
+    call_kwargs = _mock_backends["hosted"].call_args.kwargs
+    assert call_kwargs["timeout_s"] == HostedBackend._DEFAULT_TIMEOUT_S
+
+
+def test_hosted_backend_gets_explicit_custom_timeout(_mock_backends) -> None:
+    g = _make_guardrail(backend="hosted", access_token="secret-token", timeout_s=3.0)
+
+    assert g._backend_kind == "hosted"
+    call_kwargs = _mock_backends["hosted"].call_args.kwargs
+    assert call_kwargs["timeout_s"] == 3.0
