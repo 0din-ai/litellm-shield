@@ -34,7 +34,7 @@ model_list:
 guardrails:
   - guardrail_name: "susfactor"
     litellm_params:
-      guardrail: susfactor_guardrail.SusFactorGuardrail
+      guardrail: litellm_shield.SusFactorGuardrail
       mode: "pre_call"        # block BEFORE the LLM call (never reaches upstream)
       enforcement: "block"
       threshold: 0.5

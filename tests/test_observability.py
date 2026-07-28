@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from susfactor_guardrail.backend import SusFactorUnavailable, SusResult
-from susfactor_guardrail.guardrail import SusFactorGuardrail
+from litellm_shield.backend import SusFactorUnavailable, SusResult
+from litellm_shield.guardrail import SusFactorGuardrail
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -249,7 +249,7 @@ async def test_structured_log_emitted_with_score_and_latency(
     g = _guardrail(action="flag")
     g._backend.score = AsyncMock(return_value=SUSPICIOUS)
 
-    with caplog.at_level(logging.INFO, logger="susfactor_guardrail.guardrail"):
+    with caplog.at_level(logging.INFO, logger="litellm_shield.guardrail"):
         await g.apply_guardrail(inputs=_inputs("jailbreak"), request_data={}, input_type="request")
 
     # At least one log record should mention score or decision

@@ -14,8 +14,6 @@ pip install 0din-litellm-shield
 
 This installs the `hosted` backend — no private dependencies required. Self-hosted in-process inference (`sdk`/`sdk-onnx`) remains 0DIN-internal only, since it depends on `odin-prompt-toolkit`, which is not on public PyPI; see [Configuration reference](#configuration-reference).
 
-> Note: the PyPI distribution name (`0din-litellm-shield`) differs from the importable package name — `import susfactor_guardrail` is correct, for historical reasons (the guardrail predates the PyPI-publishing effort).
-
 ---
 
 ## How it works
@@ -166,7 +164,7 @@ Exit codes: `0` = all prompts scored successfully (label may be `"safe"` or `"su
 guardrails:
   - guardrail_name: "susfactor"
     litellm_params:
-      guardrail: susfactor_guardrail.SusFactorGuardrail
+      guardrail: litellm_shield.SusFactorGuardrail
       mode: "during_call"        # during_call | pre_call | post_call
       enforcement: "flag"            # flag | shadow | block
       threshold: 0.5             # score >= threshold → suspicious
@@ -244,7 +242,7 @@ uv run ruff check .
 uv run black --check .
 
 # Type check
-uv run mypy susfactor_guardrail/
+uv run mypy litellm_shield/
 ```
 
 ### Without Docker (direct LiteLLM CLI)

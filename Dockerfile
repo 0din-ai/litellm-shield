@@ -35,14 +35,14 @@ RUN uv pip install --system \
         "onnxruntime>=1.16.0"
 
 # ---- install the guardrail package -------------------------------------
-COPY susfactor_guardrail/ ./susfactor_guardrail/
+COPY litellm_shield/ ./litellm_shield/
 COPY pyproject.toml ./
 RUN uv pip install --system --no-deps .
 
 # ---- LiteLLM proxy config + guardrail shim -----------------------------
 # LiteLLM resolves custom guardrails by looking for a .py file next to the
 # config file. The shim re-exports from the installed package.
-COPY susfactor_guardrail.py ./susfactor_guardrail.py
+COPY litellm_shield.py ./litellm_shield.py
 COPY examples/config-flag.yaml ./config.yaml
 
 # ---- model cache mount point -------------------------------------------

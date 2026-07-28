@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from susfactor_guardrail.guardrail import SusFactorGuardrail
+from litellm_shield.guardrail import SusFactorGuardrail
 
 
 def _make_guardrail(
@@ -33,9 +33,9 @@ def _make_guardrail(
 def _mock_backends():
     """Patch backend constructors so no real classifier/HTTP client gets built."""
     with (
-        patch("susfactor_guardrail.guardrail.SdkBackend", return_value=MagicMock()) as sdk,
-        patch("susfactor_guardrail.guardrail.OnnxSdkBackend", return_value=MagicMock()) as onnx,
-        patch("susfactor_guardrail.guardrail.HostedBackend", return_value=MagicMock()) as hosted,
+        patch("litellm_shield.guardrail.SdkBackend", return_value=MagicMock()) as sdk,
+        patch("litellm_shield.guardrail.OnnxSdkBackend", return_value=MagicMock()) as onnx,
+        patch("litellm_shield.guardrail.HostedBackend", return_value=MagicMock()) as hosted,
     ):
         yield {"sdk": sdk, "sdk-onnx": onnx, "hosted": hosted}
 
@@ -183,7 +183,7 @@ def test_access_token_falls_back_to_odin_api_token_env(_mock_backends, monkeypat
 
 
 def test_hosted_backend_gets_default_timeout(_mock_backends) -> None:
-    from susfactor_guardrail.backend import HostedBackend
+    from litellm_shield.backend import HostedBackend
 
     g = _make_guardrail(backend="hosted", access_token="secret-token")
 

@@ -3,26 +3,26 @@
 import importlib
 import importlib.metadata
 
-import susfactor_guardrail
+import litellm_shield
 
 
 def test_package_importable() -> None:
-    assert importlib.import_module("susfactor_guardrail") is not None
+    assert importlib.import_module("litellm_shield") is not None
 
 
 def test_version_exposed() -> None:
-    assert hasattr(susfactor_guardrail, "__version__")
-    assert isinstance(susfactor_guardrail.__version__, str)
-    assert susfactor_guardrail.__version__ != ""
+    assert hasattr(litellm_shield, "__version__")
+    assert isinstance(litellm_shield.__version__, str)
+    assert litellm_shield.__version__ != ""
 
 
 def test_version_matches_installed_distribution_metadata() -> None:
     # Version is derived from git tags via hatch-vcs at build time, not
     # hardcoded — it must always match what was actually installed.
-    assert susfactor_guardrail.__version__ == importlib.metadata.version("0din-litellm-shield")
+    assert litellm_shield.__version__ == importlib.metadata.version("0din-litellm-shield")
 
 
 def test_guardrail_class_exported() -> None:
-    from susfactor_guardrail import SusFactorGuardrail
+    from litellm_shield import SusFactorGuardrail
 
     assert SusFactorGuardrail is not None

@@ -25,7 +25,7 @@ model_list:
 guardrails:
   - guardrail_name: "susfactor"
     litellm_params:
-      guardrail: susfactor_guardrail.SusFactorGuardrail
+      guardrail: litellm_shield.SusFactorGuardrail
       mode: "during_call"
       enforcement: "shadow"   # never block — record only
       threshold: 0.5

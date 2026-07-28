@@ -7,16 +7,12 @@ run the classifier in-process (no network hop). A ``hosted`` backend is also
 available for when self-hosting the model isn't desired — it sends prompts
 to 0DIN's hosted SusFactor API over HTTPS instead.
 
-Note: this is the ``0din-litellm-shield`` PyPI distribution; the import name
-is ``susfactor_guardrail`` for historical reasons (the guardrail predates the
-PyPI-publishing effort).
-
 Example config.yaml::
 
     guardrails:
       - guardrail_name: "susfactor"
         litellm_params:
-          guardrail: susfactor_guardrail.SusFactorGuardrail
+          guardrail: litellm_shield.SusFactorGuardrail
           mode: "during_call"
           enforcement: "flag"
           threshold: 0.5
@@ -38,7 +34,7 @@ except importlib.metadata.PackageNotFoundError:
     # to read). Not expected in normal use, but avoid crashing on import.
     __version__ = "0.0.0"
 
-from susfactor_guardrail.guardrail import SusFactorGuardrail
+from litellm_shield.guardrail import SusFactorGuardrail
 
 __all__ = [
     "SusFactorGuardrail",

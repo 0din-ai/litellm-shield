@@ -61,7 +61,7 @@ Repository = "https://github.com/0din-ai/litellm-shield"
 source = "vcs"
 
 [tool.hatch.build.targets.wheel]
-packages = ["susfactor_guardrail"]
+packages = ["litellm_shield"]
 
 [tool.hatch.build.targets.sdist]
 # The private odin-prompt-toolkit wheel is committed for internal dev/CI
