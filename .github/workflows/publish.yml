@@ -67,7 +67,11 @@ jobs:
     name: Build and publish
     needs: test
     runs-on: ubuntu-latest
+    # Job-level permissions fully replace (not merge with) the workflow-level
+    # default above, so contents: read must be repeated here — without it,
+    # checkout has no GITHUB_TOKEN access and fails against this private repo.
     permissions:
+      contents: read
       id-token: write
 
     steps:
