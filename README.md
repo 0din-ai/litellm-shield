@@ -6,7 +6,7 @@ SusFactor jailbreak and prompt-injection guardrail for [LiteLLM](https://docs.li
 
 Runs the **0DIN SusFactor classifier** — an e5-large encoder + MLP head trained on hard negatives — to detect jailbreak and prompt-injection attempts on LLM inputs, outputs, and tool-call arguments. With the `sdk`/`sdk-onnx` backends this runs in-process: no network hop, fully offline once the model is provisioned. A `hosted` backend is also available for when self-hosting the model isn't desired — it sends prompts to 0DIN's hosted SusFactor API over HTTPS instead.
 
-> **Status:** Early development, not yet published to PyPI. The `hosted` backend (HTTP calls to 0DIN's hosted SusFactor API) is the supported path for external users and has no dependency on any private package — once published, `pip install litellm-shield` will be enough to use it. Self-hosted in-process inference (`sdk`/`sdk-onnx` backends, the `self-hosted` extra) remains 0DIN-internal only, since it depends on `odin-prompt-toolkit`, which is not on public PyPI.
+> **Status:** Early development, not yet published to PyPI. The `hosted` backend (HTTP calls to 0DIN's hosted SusFactor API) is the supported path for external users and has no dependency on any private package — once published, `pip install 0din-litellm-shield` will be enough to use it. Self-hosted in-process inference (`sdk`/`sdk-onnx` backends, the `self-hosted` extra) remains 0DIN-internal only, since it depends on `odin-prompt-toolkit`, which is not on public PyPI.
 
 ---
 

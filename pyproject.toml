@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "litellm-shield"
+name = "0din-litellm-shield"
 version = "0.1.0"
 description = "SusFactor jailbreak/prompt-injection guardrail for LiteLLM"
 requires-python = ">=3.11"
@@ -48,7 +48,7 @@ dev = [
 # by pulling in odin-prompt-toolkit. This package is not published to public
 # PyPI — it only resolves via the private local wheel pinned in
 # [tool.uv.sources] above, which requires `uv` and the committed wheels/
-# directory. External users installing `litellm-shield` from PyPI cannot
+# directory. External users installing `0din-litellm-shield` from PyPI cannot
 # resolve this extra; use backend="hosted" instead.
 self-hosted = [
     "odin-prompt-toolkit[susfactor,onnx]",

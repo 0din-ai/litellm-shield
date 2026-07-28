@@ -129,7 +129,7 @@ class SdkBackend:
                 raise SusFactorUnavailable(
                     "Self-hosted SusFactor inference requires the internal "
                     "odin-prompt-toolkit[susfactor] package, which is not available in the "
-                    "public litellm-shield distribution. Use backend='hosted' instead, or "
+                    "public 0din-litellm-shield distribution. Use backend='hosted' instead, or "
                     "install the internal self-hosted extra if you have access to 0DIN's "
                     "private package registry."
                 )
@@ -213,7 +213,7 @@ class OnnxSdkBackend:
                 raise SusFactorUnavailable(
                     "Self-hosted SusFactor inference requires the internal "
                     "odin-prompt-toolkit[onnx] package, which is not available in the public "
-                    "litellm-shield distribution. Use backend='hosted' instead, or install the "
+                    "0din-litellm-shield distribution. Use backend='hosted' instead, or install the "
                     "internal self-hosted extra if you have access to 0DIN's private package "
                     "registry."
                 )

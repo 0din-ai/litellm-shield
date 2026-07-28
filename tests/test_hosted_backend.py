@@ -360,7 +360,7 @@ async def test_hosted_backend_unexpected_response_shape_raises_unavailable() -> 
 
 
 def test_hosted_backend_has_no_dependency_on_odin_prompt_toolkit() -> None:
-    """The public litellm-shield distribution ships HostedBackend without the
+    """The public 0din-litellm-shield distribution ships HostedBackend without the
     private odin-prompt-toolkit package.
 
     Loads a throwaway copy of susfactor_guardrail.backend's source under a
