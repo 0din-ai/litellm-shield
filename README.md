@@ -1,5 +1,7 @@
 # litellm-shield
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 SusFactor jailbreak and prompt-injection guardrail for [LiteLLM](https://docs.litellm.ai/).
 
 Runs the **0DIN SusFactor classifier** — an e5-large encoder + MLP head trained on hard negatives — to detect jailbreak and prompt-injection attempts on LLM inputs, outputs, and tool-call arguments. With the `sdk`/`sdk-onnx` backends this runs in-process: no network hop, fully offline once the model is provisioned. A `hosted` backend is also available for when self-hosting the model isn't desired — it sends prompts to 0DIN's hosted SusFactor API over HTTPS instead.
@@ -321,3 +323,7 @@ LITELLM_MASTER_KEY=sk-1234 uv run python scripts/latency_report.py \
 docker compose logs litellm > proxy.log
 uv run python scripts/latency_report.py --from-logs proxy.log --format json --output report.json
 ```
+
+## License
+
+Licensed under the Apache License 2.0, see [LICENSE](./LICENSE).

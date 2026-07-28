@@ -7,7 +7,7 @@ name = "litellm-shield"
 version = "0.1.0"
 description = "SusFactor jailbreak/prompt-injection guardrail for LiteLLM"
 requires-python = ">=3.11"
-license = {text = "Proprietary"}
+license = "Apache-2.0"
 authors = [
     {name = "0DIN Team"},
 ]
@@ -15,6 +15,7 @@ keywords = ["litellm", "guardrail", "jailbreak", "prompt-injection", "susfactor"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
