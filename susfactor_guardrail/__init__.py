@@ -7,6 +7,10 @@ run the classifier in-process (no network hop). A ``hosted`` backend is also
 available for when self-hosting the model isn't desired — it sends prompts
 to 0DIN's hosted SusFactor API over HTTPS instead.
 
+Note: this is the ``0din-litellm-shield`` PyPI distribution; the import name
+is ``susfactor_guardrail`` for historical reasons (the guardrail predates the
+PyPI-publishing effort).
+
 Example config.yaml::
 
     guardrails:
@@ -21,7 +25,18 @@ Example config.yaml::
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+import importlib.metadata
+
+try:
+    # Version is derived from git tags at build time via hatch-vcs — see
+    # [tool.hatch.version] in pyproject.toml. This lookup works both for
+    # wheel installs (metadata baked in at build time) and editable/dev
+    # installs (uv/hatchling regenerates it from the local git repo).
+    __version__ = importlib.metadata.version("0din-litellm-shield")
+except importlib.metadata.PackageNotFoundError:
+    # Running from a source checkout that was never installed (no dist-info
+    # to read). Not expected in normal use, but avoid crashing on import.
+    __version__ = "0.0.0"
 
 from susfactor_guardrail.guardrail import SusFactorGuardrail
 
