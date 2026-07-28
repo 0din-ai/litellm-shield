@@ -76,7 +76,6 @@ jobs:
           # hatch-vcs derives the package version from git tags — a shallow
           # checkout would leave it unable to see the release tag.
           fetch-depth: 0
-          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
