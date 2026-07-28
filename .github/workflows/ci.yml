@@ -39,7 +39,7 @@ jobs:
         run: uv run black --check .
 
       - name: Mypy type check
-        run: uv run mypy susfactor_guardrail/
+        run: uv run mypy litellm_shield/
 
       - name: Pytest
         run: uv run pytest tests/ -v

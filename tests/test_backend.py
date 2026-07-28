@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from susfactor_guardrail.backend import (
+from litellm_shield.backend import (
     SdkBackend,
     SusFactorUnavailable,
     SusResult,
@@ -133,7 +133,7 @@ async def test_sdk_backend_model_missing_raises_unavailable() -> None:
     backend = SdkBackend(model_cache_dir="/tmp/no-model-here", threshold=0.5, device=None)
 
     with patch(
-        "susfactor_guardrail.backend.SusFactorClassifier.new",
+        "litellm_shield.backend.SusFactorClassifier.new",
         new=AsyncMock(side_effect=SusFactorError("Model not found")),
     ):
         with pytest.raises(SusFactorUnavailable, match="Model not found"):
@@ -164,7 +164,7 @@ async def test_sdk_backend_raises_actionable_error_when_toolkit_unavailable() ->
     backend or the internal extra — not a bare ImportError."""
     backend = SdkBackend(model_cache_dir=None, threshold=0.5, device=None)
 
-    with patch("susfactor_guardrail.backend._SDK_AVAILABLE", False):
+    with patch("litellm_shield.backend._SDK_AVAILABLE", False):
         with pytest.raises(SusFactorUnavailable, match="backend='hosted'") as exc_info:
             await backend.score("test prompt")
 
@@ -201,7 +201,7 @@ async def test_sdk_backend_loads_classifier_once() -> None:
 
     backend = SdkBackend(model_cache_dir=None, threshold=0.5, device=None)
 
-    with patch("susfactor_guardrail.backend.SusFactorClassifier.new", new=fake_new):
+    with patch("litellm_shield.backend.SusFactorClassifier.new", new=fake_new):
         # Fire 5 concurrent score() calls — only one load should happen
         await asyncio.gather(*[backend.score("hi") for _ in range(5)])
 

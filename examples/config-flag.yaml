@@ -38,7 +38,7 @@ model_list:
 guardrails:
   - guardrail_name: "susfactor"
     litellm_params:
-      guardrail: susfactor_guardrail.SusFactorGuardrail
+      guardrail: litellm_shield.SusFactorGuardrail
       mode: "during_call"     # runs in parallel with the LLM call — hides latency
       enforcement: "flag"     # allow through, annotate decision
       threshold: 0.5

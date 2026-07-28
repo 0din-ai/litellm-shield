@@ -17,8 +17,8 @@ import pytest
 from litellm.exceptions import GuardrailRaisedException
 from litellm.types.utils import ChatCompletionMessageToolCall, Function
 
-from susfactor_guardrail.backend import SusResult
-from susfactor_guardrail.guardrail import SusFactorGuardrail
+from litellm_shield.backend import SusResult
+from litellm_shield.guardrail import SusFactorGuardrail
 
 # ---------------------------------------------------------------------------
 # Fixtures

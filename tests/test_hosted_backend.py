@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from susfactor_guardrail.backend import HostedBackend, SusFactorUnavailable, SusResult
+from litellm_shield.backend import HostedBackend, SusFactorUnavailable, SusResult
 
 PORTAL_URL = "https://portal.example"
 SUSFACTOR_URL = "https://susfactor.example"
@@ -390,23 +390,23 @@ def test_hosted_backend_has_no_dependency_on_odin_prompt_toolkit() -> None:
     """The public 0din-litellm-shield distribution ships HostedBackend without the
     private odin-prompt-toolkit package.
 
-    Loads a throwaway copy of susfactor_guardrail.backend's source under a
+    Loads a throwaway copy of litellm_shield.backend's source under a
     private module name (not registered in ``sys.modules`` as
-    ``susfactor_guardrail.backend``) with odin_prompt_toolkit imports
+    ``litellm_shield.backend``) with odin_prompt_toolkit imports
     blocked, then confirms HostedBackend still imports and constructs
     cleanly. Using a separate module object — rather than
     ``importlib.reload`` on the shared module — avoids corrupting class
     identity for every other test file that already imported from
-    ``susfactor_guardrail.backend`` (isinstance/exception-matching checks
+    ``litellm_shield.backend`` (isinstance/exception-matching checks
     elsewhere in the suite compare against the original class objects).
     """
     import builtins
     import importlib.util
 
-    import susfactor_guardrail.backend as real_backend_module
+    import litellm_shield.backend as real_backend_module
 
     spec = importlib.util.spec_from_file_location(
-        "susfactor_guardrail._backend_isolated_test_copy",
+        "litellm_shield._backend_isolated_test_copy",
         real_backend_module.__file__,
     )
     assert spec is not None and spec.loader is not None

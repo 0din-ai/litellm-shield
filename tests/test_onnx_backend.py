@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from susfactor_guardrail.backend import (
+from litellm_shield.backend import (
     OnnxSdkBackend,
     SusFactorUnavailable,
     SusResult,
@@ -72,7 +72,7 @@ async def test_onnx_backend_model_missing_raises_unavailable() -> None:
 
     backend = OnnxSdkBackend(model_cache_dir="/tmp/no-model-here", threshold=0.5, device=None)
     with patch(
-        "susfactor_guardrail.backend.SusFactorOnnxClassifier.new",
+        "litellm_shield.backend.SusFactorOnnxClassifier.new",
         new=AsyncMock(side_effect=SusFactorError("ONNX model not found")),
     ):
         with pytest.raises(SusFactorUnavailable, match="ONNX model not found"):
@@ -86,7 +86,7 @@ async def test_onnx_backend_raises_actionable_error_when_toolkit_unavailable() -
     backend or the internal extra — not a bare ImportError."""
     backend = OnnxSdkBackend(model_cache_dir=None, threshold=0.5, device=None)
 
-    with patch("susfactor_guardrail.backend._ONNX_SDK_AVAILABLE", False):
+    with patch("litellm_shield.backend._ONNX_SDK_AVAILABLE", False):
         with pytest.raises(SusFactorUnavailable, match="backend='hosted'") as exc_info:
             await backend.score("test prompt")
 
@@ -109,7 +109,7 @@ async def test_onnx_backend_loads_classifier_once() -> None:
         return clf
 
     backend = OnnxSdkBackend(model_cache_dir=None, threshold=0.5, device=None)
-    with patch("susfactor_guardrail.backend.SusFactorOnnxClassifier.new", new=fake_new):
+    with patch("litellm_shield.backend.SusFactorOnnxClassifier.new", new=fake_new):
         await asyncio.gather(*[backend.score("hi") for _ in range(5)])
 
     assert call_count == 1

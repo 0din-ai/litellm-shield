@@ -14,7 +14,7 @@ Configuration via ``config.yaml`` ``litellm_params``::
     guardrails:
       - guardrail_name: "susfactor"
         litellm_params:
-          guardrail: susfactor_guardrail.SusFactorGuardrail
+          guardrail: litellm_shield.SusFactorGuardrail
           mode: "during_call"
           enforcement: "flag"
           threshold: 0.5
@@ -42,7 +42,7 @@ from litellm.exceptions import GuardrailRaisedException
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.proxy._types import UserAPIKeyAuth
 
-from susfactor_guardrail.backend import (
+from litellm_shield.backend import (
     HostedBackend,
     OnnxSdkBackend,
     SdkBackend,
@@ -61,7 +61,7 @@ _DEFAULT_PORTAL_URL = "https://0din.ai"
 _DEFAULT_SUSFACTOR_URL = "https://defense.0din.ai"
 
 # Captured at import time (not read off HostedBackend at call time) so tests that
-# patch susfactor_guardrail.guardrail.HostedBackend don't turn this into a MagicMock.
+# patch litellm_shield.guardrail.HostedBackend don't turn this into a MagicMock.
 _DEFAULT_HOSTED_TIMEOUT_S = HostedBackend._DEFAULT_TIMEOUT_S
 
 

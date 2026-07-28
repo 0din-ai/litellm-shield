@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from litellm.exceptions import GuardrailRaisedException
 
-from susfactor_guardrail.backend import SusFactorUnavailable, SusResult
-from susfactor_guardrail.guardrail import SusFactorGuardrail
+from litellm_shield.backend import SusFactorUnavailable, SusResult
+from litellm_shield.guardrail import SusFactorGuardrail
 
 # ---------------------------------------------------------------------------
 # Helpers
