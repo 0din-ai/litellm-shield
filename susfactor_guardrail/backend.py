@@ -278,7 +278,16 @@ class HostedBackend:
         refresh_buffer_s: Seconds before expiry to trigger the background
             refresh — e.g. with the default 900s token lifetime and a 120s
             buffer, refresh fires at the 780s mark.
+        timeout_s: HTTP timeout (connect/read/write/pool, seconds) for both
+            the JWT mint and scoring requests. httpx.AsyncClient() with no
+            timeout= silently gets an implicit 5s default — indistinguishable
+            from a deliberate choice and easy to blow through on a cold
+            backend or a slow network hop. We use a longer, explicit default
+            so transient slowness doesn't masquerade as unavailability.
     """
+
+    # See timeout_s docstring above for why this isn't httpx's implicit 5s default.
+    _DEFAULT_TIMEOUT_S = 10.0
 
     def __init__(
         self,
@@ -287,6 +296,7 @@ class HostedBackend:
         access_token: str,
         threshold: float,
         refresh_buffer_s: int = 120,
+        timeout_s: float = _DEFAULT_TIMEOUT_S,
     ) -> None:
         self._portal_url = portal_url.rstrip("/")
         self._susfactor_url = susfactor_url.rstrip("/")
@@ -294,7 +304,7 @@ class HostedBackend:
         self._threshold = threshold
         self._refresh_buffer_s = refresh_buffer_s
 
-        self._client = httpx.AsyncClient()
+        self._client = httpx.AsyncClient(timeout=timeout_s)
         self._jwt: Optional[str] = None
         self._jwt_expires_at: float = 0.0
         self._lock: asyncio.Lock = asyncio.Lock()
