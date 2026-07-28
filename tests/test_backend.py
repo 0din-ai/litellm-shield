@@ -153,6 +153,26 @@ async def test_sdk_backend_inference_error_raises_unavailable(mock_classifier: M
 
 
 # ---------------------------------------------------------------------------
+# SdkBackend — private package not installed (public PyPI distribution)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sdk_backend_raises_actionable_error_when_toolkit_unavailable() -> None:
+    """When odin-prompt-toolkit isn't installed (the public PyPI distribution),
+    scoring must fail with an actionable message pointing at the hosted
+    backend or the internal extra — not a bare ImportError."""
+    backend = SdkBackend(model_cache_dir=None, threshold=0.5, device=None)
+
+    with patch("susfactor_guardrail.backend._SDK_AVAILABLE", False):
+        with pytest.raises(SusFactorUnavailable, match="backend='hosted'") as exc_info:
+            await backend.score("test prompt")
+
+    assert "odin-prompt-toolkit" in str(exc_info.value)
+    assert "public litellm-shield distribution" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
 # SdkBackend — load-once guarantee
 # ---------------------------------------------------------------------------
 

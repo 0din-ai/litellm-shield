@@ -1481,7 +1481,6 @@ source = { editable = "." }
 dependencies = [
     { name = "httpx" },
     { name = "litellm", extra = ["proxy"] },
-    { name = "odin-prompt-toolkit", extra = ["onnx", "susfactor"] },
 ]
 
 [package.optional-dependencies]
@@ -1492,6 +1491,9 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
+self-hosted = [
+    { name = "odin-prompt-toolkit", extra = ["onnx", "susfactor"] },
+]
 
 [package.metadata]
 requires-dist = [
@@ -1499,12 +1501,12 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "litellm", extras = ["proxy"], specifier = ">=1.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.5.0" },
-    { name = "odin-prompt-toolkit", extras = ["susfactor", "onnx"], path = "wheels/odin_prompt_toolkit-0.5.0-py3-none-any.whl" },
+    { name = "odin-prompt-toolkit", extras = ["susfactor", "onnx"], marker = "extra == 'self-hosted'", path = "wheels/odin_prompt_toolkit-0.5.0-py3-none-any.whl" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "self-hosted"]
 
 [[package]]
 name = "markdown-it-py"

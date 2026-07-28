@@ -25,13 +25,14 @@ classifiers = [
 ]
 dependencies = [
     "litellm[proxy]>=1.0.0",
-    "odin-prompt-toolkit[susfactor,onnx]",
     "httpx>=0.27.0",
 ]
 
 [tool.uv.sources]
 # Wheel is pre-built locally (requires SSH access to the private repo).
 # Committed to wheels/ so CI and Docker builds work without credentials.
+# Only resolved when the self-hosted extra below is installed — the public
+# PyPI distribution's core install never touches this.
 odin-prompt-toolkit = {path = "wheels/odin_prompt_toolkit-0.5.0-py3-none-any.whl"}
 
 [project.optional-dependencies]
@@ -42,12 +43,26 @@ dev = [
     "black>=23.0.0",
     "mypy>=1.5.0",
 ]
+# 0DIN-internal only: enables SdkBackend/OnnxSdkBackend (in-process inference)
+# by pulling in odin-prompt-toolkit. This package is not published to public
+# PyPI — it only resolves via the private local wheel pinned in
+# [tool.uv.sources] above, which requires `uv` and the committed wheels/
+# directory. External users installing `litellm-shield` from PyPI cannot
+# resolve this extra; use backend="hosted" instead.
+self-hosted = [
+    "odin-prompt-toolkit[susfactor,onnx]",
+]
 
 [project.urls]
 Repository = "https://github.com/0din-ai/litellm-shield"
 
 [tool.hatch.build.targets.wheel]
 packages = ["susfactor_guardrail"]
+
+[tool.hatch.build.targets.sdist]
+# The private odin-prompt-toolkit wheel is committed for internal dev/CI
+# builds (see [tool.uv.sources]) but must never ship in the published sdist.
+exclude = ["/wheels"]
 
 [tool.black]
 line-length = 100
