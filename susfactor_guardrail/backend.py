@@ -127,8 +127,11 @@ class SdkBackend:
 
             if not _SDK_AVAILABLE:
                 raise SusFactorUnavailable(
-                    "odin-prompt-toolkit[susfactor] is not installed. "
-                    "Install it with: pip install 'odin-prompt-toolkit[susfactor]'"
+                    "Self-hosted SusFactor inference requires the internal "
+                    "odin-prompt-toolkit[susfactor] package, which is not available in the "
+                    "public 0din-litellm-shield distribution. Use backend='hosted' instead, or "
+                    "install the internal self-hosted extra if you have access to 0DIN's "
+                    "private package registry."
                 )
 
             try:
@@ -208,8 +211,11 @@ class OnnxSdkBackend:
 
             if not _ONNX_SDK_AVAILABLE:
                 raise SusFactorUnavailable(
-                    "odin-prompt-toolkit[onnx] is not installed. "
-                    "Install it with: pip install 'odin-prompt-toolkit[onnx]'"
+                    "Self-hosted SusFactor inference requires the internal "
+                    "odin-prompt-toolkit[onnx] package, which is not available in the public "
+                    "0din-litellm-shield distribution. Use backend='hosted' instead, or install the "
+                    "internal self-hosted extra if you have access to 0DIN's private package "
+                    "registry."
                 )
 
             try:

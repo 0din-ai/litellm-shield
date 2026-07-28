@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import time
 from typing import Any, Callable, Optional
 from unittest.mock import AsyncMock, MagicMock
@@ -378,3 +379,64 @@ async def test_hosted_backend_unexpected_response_shape_raises_unavailable() -> 
 
     with pytest.raises(SusFactorUnavailable):
         await backend.score("hi")
+
+
+# ---------------------------------------------------------------------------
+# HostedBackend — zero transitive dependency on odin_prompt_toolkit
+# ---------------------------------------------------------------------------
+
+
+def test_hosted_backend_has_no_dependency_on_odin_prompt_toolkit() -> None:
+    """The public 0din-litellm-shield distribution ships HostedBackend without the
+    private odin-prompt-toolkit package.
+
+    Loads a throwaway copy of susfactor_guardrail.backend's source under a
+    private module name (not registered in ``sys.modules`` as
+    ``susfactor_guardrail.backend``) with odin_prompt_toolkit imports
+    blocked, then confirms HostedBackend still imports and constructs
+    cleanly. Using a separate module object — rather than
+    ``importlib.reload`` on the shared module — avoids corrupting class
+    identity for every other test file that already imported from
+    ``susfactor_guardrail.backend`` (isinstance/exception-matching checks
+    elsewhere in the suite compare against the original class objects).
+    """
+    import builtins
+    import importlib.util
+
+    import susfactor_guardrail.backend as real_backend_module
+
+    spec = importlib.util.spec_from_file_location(
+        "susfactor_guardrail._backend_isolated_test_copy",
+        real_backend_module.__file__,
+    )
+    assert spec is not None and spec.loader is not None
+    isolated_backend = importlib.util.module_from_spec(spec)
+
+    real_import = builtins.__import__
+
+    def blocking_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name.startswith("odin_prompt_toolkit"):
+            raise ImportError(f"No module named {name!r} (simulated for test)")
+        return real_import(name, *args, **kwargs)
+
+    # dataclasses resolves string annotations (from `from __future__ import
+    # annotations`) via sys.modules[cls.__module__] — register the isolated
+    # module there for the duration of exec, then clean up.
+    builtins.__import__ = blocking_import
+    sys.modules[spec.name] = isolated_backend
+    try:
+        spec.loader.exec_module(isolated_backend)
+    finally:
+        builtins.__import__ = real_import
+        del sys.modules[spec.name]
+
+    assert isolated_backend._SDK_AVAILABLE is False
+    assert isolated_backend._ONNX_SDK_AVAILABLE is False
+
+    hosted = isolated_backend.HostedBackend(
+        portal_url=PORTAL_URL,
+        susfactor_url=SUSFACTOR_URL,
+        access_token=ACCESS_TOKEN,
+        threshold=0.5,
+    )
+    assert isinstance(hosted, isolated_backend.HostedBackend)

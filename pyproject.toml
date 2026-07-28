@@ -1,13 +1,13 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "litellm-shield"
-version = "0.1.0"
+name = "0din-litellm-shield"
+dynamic = ["version"]
 description = "SusFactor jailbreak/prompt-injection guardrail for LiteLLM"
 requires-python = ">=3.11"
-license = {text = "Proprietary"}
+license = "Apache-2.0"
 authors = [
     {name = "0DIN Team"},
 ]
@@ -15,8 +15,8 @@ keywords = ["litellm", "guardrail", "jailbreak", "prompt-injection", "susfactor"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -25,13 +25,14 @@ classifiers = [
 ]
 dependencies = [
     "litellm[proxy]>=1.0.0",
-    "odin-prompt-toolkit[susfactor,onnx]",
     "httpx>=0.27.0",
 ]
 
 [tool.uv.sources]
 # Wheel is pre-built locally (requires SSH access to the private repo).
 # Committed to wheels/ so CI and Docker builds work without credentials.
+# Only resolved when the self-hosted extra below is installed — the public
+# PyPI distribution's core install never touches this.
 odin-prompt-toolkit = {path = "wheels/odin_prompt_toolkit-0.5.0-py3-none-any.whl"}
 
 [project.optional-dependencies]
@@ -42,20 +43,37 @@ dev = [
     "black>=23.0.0",
     "mypy>=1.5.0",
 ]
+# 0DIN-internal only: enables SdkBackend/OnnxSdkBackend (in-process inference)
+# by pulling in odin-prompt-toolkit. This package is not published to public
+# PyPI — it only resolves via the private local wheel pinned in
+# [tool.uv.sources] above, which requires `uv` and the committed wheels/
+# directory. External users installing `0din-litellm-shield` from PyPI cannot
+# resolve this extra; use backend="hosted" instead.
+self-hosted = [
+    "odin-prompt-toolkit[susfactor,onnx]",
+]
 
 [project.urls]
 Repository = "https://github.com/0din-ai/litellm-shield"
 
+[tool.hatch.version]
+source = "vcs"
+
 [tool.hatch.build.targets.wheel]
 packages = ["susfactor_guardrail"]
 
+[tool.hatch.build.targets.sdist]
+# The private odin-prompt-toolkit wheel is committed for internal dev/CI
+# builds (see [tool.uv.sources]) but must never ship in the published sdist.
+exclude = ["/wheels"]
+
 [tool.black]
 line-length = 100
-target-version = ["py310", "py311", "py312"]
+target-version = ["py311", "py312", "py313"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = [
@@ -72,7 +90,7 @@ ignore = [
 ]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = false
 warn_unused_configs = true
 disallow_untyped_defs = false

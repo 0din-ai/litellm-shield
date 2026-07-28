@@ -1,10 +1,14 @@
 # litellm-shield
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 SusFactor jailbreak and prompt-injection guardrail for [LiteLLM](https://docs.litellm.ai/).
 
 Runs the **0DIN SusFactor classifier** — an e5-large encoder + MLP head trained on hard negatives — to detect jailbreak and prompt-injection attempts on LLM inputs, outputs, and tool-call arguments. With the `sdk`/`sdk-onnx` backends this runs in-process: no network hop, fully offline once the model is provisioned. A `hosted` backend is also available for when self-hosting the model isn't desired — it sends prompts to 0DIN's hosted SusFactor API over HTTPS instead.
 
-> **Status:** Early development (0DIN-1587). Internal only.
+> **Status:** Early development, not yet published to PyPI. The `hosted` backend (HTTP calls to 0DIN's hosted SusFactor API) is the supported path for external users and has no dependency on any private package — once published, `pip install 0din-litellm-shield` will be enough to use it. Self-hosted in-process inference (`sdk`/`sdk-onnx` backends, the `self-hosted` extra) remains 0DIN-internal only, since it depends on `odin-prompt-toolkit`, which is not on public PyPI.
+>
+> Note: the PyPI distribution name (`0din-litellm-shield`) differs from the importable package name — `import susfactor_guardrail` is correct, for historical reasons (the guardrail predates the PyPI-publishing effort).
 
 ---
 
@@ -148,6 +152,10 @@ Exit codes: `0` = all prompts scored successfully (label may be `"safe"` or `"su
 
 ## Configuration reference
 
+> `sdk`/`sdk-onnx` require `odin-prompt-toolkit` (the `self-hosted` extra), which is 0DIN-internal
+> only — it resolves against a private wheel, not public PyPI. External users installing from
+> PyPI should use `backend: "hosted"`.
+
 ```yaml
 guardrails:
   - guardrail_name: "susfactor"
@@ -270,7 +278,7 @@ LiteLLM Proxy
                                                        (smoke-tested directly by scripts/smoke_test_hosted.py)
 ```
 
-The `SusFactorBackend` protocol allows backends to be swapped via the `backend:` config key. `sdk` uses the torch path (slower, no separate ONNX artifact needed); `sdk-onnx` uses ONNX Runtime (~35× faster on CPU); `hosted` sends prompts to 0DIN's hosted API instead of running the model locally — no model provisioning needed, but prompts leave your infrastructure over HTTPS.
+The `SusFactorBackend` protocol allows backends to be swapped via the `backend:` config key. `sdk` uses the torch path (slower, no separate ONNX artifact needed); `sdk-onnx` uses ONNX Runtime (~35× faster on CPU); `hosted` sends prompts to 0DIN's hosted API instead of running the model locally — no model provisioning needed, but prompts leave your infrastructure over HTTPS. `sdk`/`sdk-onnx` are 0DIN-internal only (see the note in [Configuration reference](#configuration-reference)); external users should use `hosted`.
 
 ---
 
@@ -317,3 +325,7 @@ LITELLM_MASTER_KEY=sk-1234 uv run python scripts/latency_report.py \
 docker compose logs litellm > proxy.log
 uv run python scripts/latency_report.py --from-logs proxy.log --format json --output report.json
 ```
+
+## License
+
+Licensed under the Apache License 2.0, see [LICENSE](./LICENSE).

@@ -26,7 +26,11 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        # self-hosted pulls in odin-prompt-toolkit from the committed private
+        # wheel (see [tool.uv.sources]) — needed so the SdkBackend/OnnxSdkBackend
+        # tests, which exercise real odin_prompt_toolkit error types, keep running.
+        # Not available to external contributors installing from public PyPI.
+        run: uv sync --extra dev --extra self-hosted
 
       - name: Ruff lint
         run: uv run ruff check .

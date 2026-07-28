@@ -10,6 +10,39 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "0din-litellm-shield"
+source = { editable = "." }
+dependencies = [
+    { name = "httpx" },
+    { name = "litellm", extra = ["proxy"] },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "black" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+]
+self-hosted = [
+    { name = "odin-prompt-toolkit", extra = ["onnx", "susfactor"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "litellm", extras = ["proxy"], specifier = ">=1.0.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.5.0" },
+    { name = "odin-prompt-toolkit", extras = ["onnx", "susfactor"], marker = "extra == 'self-hosted'", path = "wheels/odin_prompt_toolkit-0.5.0-py3-none-any.whl" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+]
+provides-extras = ["dev", "self-hosted"]
+
+[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1473,38 +1506,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/2a/10/a8231bbc381569fb9
 wheels = [
     { url = "https://files.pythonhosted.org/packages/39/fb/a5f7cc9a091c528a473d1cbfedc55c15828b8f2a49f7e3804b2dffce4ea4/litellm_proxy_extras-0.4.74-py3-none-any.whl", hash = "sha256:d4b82d4f994cb0a9954e02337455e822dc35e28a33bfe29a13d4ca2bbf0e2c76", size = 121647, upload-time = "2026-06-06T22:20:18.828Z" },
 ]
-
-[[package]]
-name = "litellm-shield"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "httpx" },
-    { name = "litellm", extra = ["proxy"] },
-    { name = "odin-prompt-toolkit", extra = ["onnx", "susfactor"] },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "black" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "litellm", extras = ["proxy"], specifier = ">=1.0.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.5.0" },
-    { name = "odin-prompt-toolkit", extras = ["susfactor", "onnx"], path = "wheels/odin_prompt_toolkit-0.5.0-py3-none-any.whl" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "markdown-it-py"

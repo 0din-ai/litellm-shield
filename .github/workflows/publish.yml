@@ -1,0 +1,93 @@
+# Publishes 0din-litellm-shield to PyPI using Trusted Publishing (OIDC).
+#
+# No PyPI API token is stored in this repo. Authentication happens via
+# GitHub's OIDC identity (the `id-token: write` permission below) instead
+# of a `password`/token secret. This requires a one-time manual setup on
+# pypi.org: registering this repo, this workflow's filename
+# (publish.yml), and the deployment environment (if one is configured)
+# as a "trusted publisher" on the `0din-litellm-shield` PyPI project.
+# That registration is handled separately by a human with access to the
+# PyPI project — this workflow cannot perform it and publishing will
+# fail with an authentication error until it's done.
+#
+# Trigger: a human creates a tagged GitHub Release when ready to ship.
+# The version itself is derived from the release's git tag by
+# hatch-vcs (see pyproject.toml) — nothing here computes or bumps it.
+
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint + Type + Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        # self-hosted pulls in odin-prompt-toolkit from the committed private
+        # wheel (see [tool.uv.sources]) — needed so the SdkBackend/OnnxSdkBackend
+        # tests, which exercise real odin_prompt_toolkit error types, keep running.
+        run: uv sync --extra dev --extra self-hosted
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Black format check
+        run: uv run black --check .
+
+      - name: Mypy type check
+        run: uv run mypy susfactor_guardrail/
+
+      - name: Pytest
+        run: uv run pytest tests/ -v
+        env:
+          # Ensure no accidental real model load in CI — tests must mock
+          SIGNATURE_SDK_MODEL_CACHE: "/tmp/no-model-cache-in-ci"
+
+  publish:
+    name: Build and publish
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # hatch-vcs derives the package version from git tags — a shallow
+          # checkout would leave it unable to see the release tag.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9  # v9.0.0
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Build
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247  # v1.14.1
