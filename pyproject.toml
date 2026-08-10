@@ -59,6 +59,10 @@ Repository = "https://github.com/0din-ai/litellm-shield"
 
 [tool.hatch.version]
 source = "vcs"
+# Docker builds don't copy .git into the image, so hatch-vcs has no tag/commit
+# history to derive a version from. This image is never published — the
+# fallback string only needs to let `uv pip install .` succeed locally.
+fallback-version = "0.0.0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["litellm_shield"]
