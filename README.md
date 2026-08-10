@@ -299,28 +299,35 @@ The `SusFactorBackend` protocol allows backends to be swapped via the `backend:`
 
 ## Latency
 
-Benchmarked at 50 requests, concurrency 10, CPU/Docker on Apple Silicon:
+Latency scales with prompt length — a headline "sub-50ms" number only tells the short-prompt story. Benchmarked with `scripts/latency_report.py`'s built-in prompt set (18 prompts spanning SHORT/MEDIUM/LONG/MAX length bands, cycled), concurrency 10, CPU/Docker on Apple Silicon (M4). The first (model-load) request is excluded from every figure below.
 
-**ONNX backend (`sdk-onnx`, default) — pure classifier:**
+**ONNX backend (`sdk-onnx`) — pure classifier latency, by prompt length:**
 
-| Metric | Latency |
-|--------|---------|
-| P50 | **15.6 ms** |
-| P95 | **23.9 ms** |
-| P99 | **26.5 ms** |
+| Bucket | Approx. length | n | P50 | P95 | P99 |
+|---|---|---|---|---|---|
+| SHORT | <50 words (one-liners) | 64 | 29.0 ms | 55.5 ms | 202.9 ms |
+| MEDIUM | 50–200 words | 60 | 232.9 ms | 463.0 ms | 564.1 ms |
+| MAX | 400+ words (near the 512-token encoder cap) | 14 | 1,026.5 ms | 1,249.1 ms | 1,395.7 ms |
 
-**End-to-end (proxy + OpenRouter + classifier):**
+*(The script's LONG 201–400-word band has no samples here — its three LONG-labeled default prompts are 140–151 words by the script's word-count proxy and land in MEDIUM instead. That's a gap in the default prompt set, not a measurement artifact — flagged as a follow-up.)*
 
-| | No guardrail | ONNX guardrail | Torch guardrail |
-|---|---|---|---|
-| P50 | 711 ms | 986 ms | 1,081 ms |
-| P95 | 986 ms | 2,578 ms | 2,292 ms |
+**Sub-50ms holds only for short, one-line prompts** (P50 29ms / P95 55.5ms). Cross into multi-sentence territory (MEDIUM) and P50 jumps to ~233ms; near the 512-token cap (MAX), P50 exceeds 1 second — roughly 35× the SHORT-bucket cost, the same order of magnitude as the ONNX-vs-PyTorch speedup that motivated switching backends in the first place. This tracks with the e5-large encoder's self-attention cost scaling with sequence length — dynamic padding only helps when the input actually is short.
 
-**In `during_call` parallel mode, user-visible latency penalty ≈ 0 ms** — the guardrail runs alongside the LLM call, so the effective cost is `max(guardrail, model) − model`. At P50 classifier overhead of ~16 ms vs an LLM call of 700 ms+, the guardrail is fully hidden. The pure classifier latency only matters for `pre_call` (hard-block before the model).
+**End-to-end (proxy + OpenRouter + classifier), by bucket:**
 
-The ONNX backend is ~35× faster than the torch backend on CPU (16 ms vs ~550 ms) because the full graph (encoder + mean-pool + MLP head) is baked into a single ONNX file with dynamic padding — short prompts don't run 512-token inference.
+| Bucket | n | P50 | P95 | P99 |
+|---|---|---|---|---|
+| SHORT | 56 | 2,282 ms | 3,902 ms | 4,378 ms |
+| MEDIUM | 52 | 2,821 ms | 4,145 ms | 5,094 ms |
+| MAX | 12 | 4,160 ms | 7,138 ms | 7,255 ms |
 
-The classifier is loaded once at first request (lazy load, `asyncio.Lock`-guarded). The first request after startup will be slower while the model loads.
+**In `during_call` parallel mode, user-visible latency penalty is still ≈0 ms at every bucket measured** — even at MAX length, the ~1s classifier cost is fully absorbed by the LLM call (2–7s here). The pure classifier latency only matters directly for `pre_call` (hard-block before the model), where a MAX-length prompt now adds a full second of latency, not a rounding error.
+
+The ONNX-vs-torch backend comparison (previously measured at ~35× faster on short prompts) hasn't been re-run per-bucket — only the ONNX backend was re-benchmarked here.
+
+The classifier is loaded once at first request (lazy load, `asyncio.Lock`-guarded). The first request after startup is slower while the model loads — a throwaway warm-up request was sent and discarded before every timed run above, consistent with the original benchmark's methodology.
+
+<sub>Methodology: `scripts/latency_report.py`'s built-in 18-prompt default set (SHORT ×8, MEDIUM ×5, LONG ×3, MAX ×2); 120 live-load requests at concurrency 10 for end-to-end numbers. Pure-classifier numbers are the `latency_ms=` field from structured guardrail logs, attributed to a length bucket by matching each log line's suspicion score back to its source prompt (scores are deterministic per prompt). MAX-bucket sample size (n=14) is small — treat its P95/P99 as directional. Re-run 2026-08-04.</sub>
 
 ### Running the latency report
 
