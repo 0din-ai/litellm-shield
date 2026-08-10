@@ -154,6 +154,17 @@ Exit codes: `0` = all prompts scored successfully (label may be `"safe"` or `"su
 
 ---
 
+## Demo
+
+Each recording is a real proxy call — `scripts/demo_step.sh` drives the same commands shown on screen (see that script for the full flow, or run it yourself).
+
+|            | Benign                                                                                                                                                     | Adversarial                                                                                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Flag mode**  | <figure><img src="docs/demo-flag-benign.gif" alt="Flag mode, benign prompt"><figcaption>Passes through, low risk score.</figcaption></figure>              | <figure><img src="docs/demo-flag-adversarial.gif" alt="Flag mode, adversarial prompt"><figcaption>Flagged/high score, but not blocked.</figcaption></figure> |
+| **Block mode** | <figure><img src="docs/demo-block-benign.gif" alt="Block mode, benign prompt"><figcaption>Still passes through — selective blocking.</figcaption></figure> | <figure><img src="docs/demo-block-adversarial.gif" alt="Block mode, adversarial prompt"><figcaption>Rejected outright (HTTP 400).</figcaption></figure>      |
+
+---
+
 ## Configuration reference
 
 > `sdk`/`sdk-onnx` require `odin-prompt-toolkit` (the `self-hosted` extra), which is 0DIN-internal
